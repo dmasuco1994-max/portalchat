@@ -45,3 +45,7 @@ out/
 
 # Docker
 docker-compose.override.yml
+
+# Local test artifacts
+qr_test.png
+*.local.png

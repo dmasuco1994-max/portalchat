@@ -37,7 +37,7 @@ services:
       - portal_net
 
   evolution:
-    image: atendai/evolution-api:v2.2.0
+    image: evoapicloud/evolution-api:latest
     container_name: portal_evolution
     restart: unless-stopped
     ports:
@@ -66,6 +66,8 @@ services:
       LOG_LEVEL: ERROR,WARN,INFO
       LOG_COLOR: "true"
       DEL_INSTANCE: "false"
+      CONFIG_SESSION_PHONE_CLIENT: WhatsApp Portal
+      CONFIG_SESSION_PHONE_NAME: Chrome
     volumes:
       - evolution_instances:/evolution/instances
     depends_on:

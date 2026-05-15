@@ -26,6 +26,11 @@ class Settings(BaseSettings):
     evolution_base_url: str = "http://localhost:8080"
     evolution_api_key: str = "change_me"
 
+    # URL Evolution should use to call back into THIS backend (reachable from
+    # within the docker network). In dev with docker-compose, the backend
+    # service name is "backend".
+    public_backend_url: str = "http://backend:8000"
+
     # ---- JWT -------------------------------------------------------------
     jwt_algorithm: str = "HS256"
     access_token_expire_minutes: int = 15

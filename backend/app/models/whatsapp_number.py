@@ -5,9 +5,10 @@ Backed 1:1 by an instance on Evolution API.
 """
 import uuid
 from datetime import datetime
+from typing import Any
 
-from sqlalchemy import CheckConstraint, ForeignKey, String
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy import Boolean, CheckConstraint, ForeignKey, String
+from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.types import DateTime
 
@@ -40,24 +41,24 @@ class WhatsAppNumber(UUIDPkMixin, TimestampMixin, Base):
         index=True,
     )
 
-    # Display label chosen by the user (e.g. "Sales line", "Support EU").
     name: Mapped[str] = mapped_column(String(120), nullable=False)
-
-    # Evolution-side identifier. Generated server-side; unique across the system
-    # because Evolution's namespace is global per server.
     instance_name: Mapped[str] = mapped_column(
         String(80), unique=True, nullable=False, index=True
     )
-
-    # Phone number reported by Evolution after the QR pairing succeeds.
     phone_number: Mapped[str | None] = mapped_column(String(40), nullable=True)
-
     status: Mapped[str] = mapped_column(
         String(20), nullable=False, default="created", index=True
     )
-
     last_connected_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
+    )
+
+    # CRM webhook configuration (set by tenant via PATCH /numbers/{id}/webhook).
+    webhook_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    webhook_secret: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    webhook_events: Mapped[list[Any] | None] = mapped_column(JSONB, nullable=True)
+    webhook_active: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False
     )
 
     organization: Mapped["Organization"] = relationship()  # noqa: F821

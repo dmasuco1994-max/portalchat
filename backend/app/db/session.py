@@ -12,7 +12,9 @@ engine = create_async_engine(
     settings.database_url,
     echo=False,
     future=True,
-    pool_pre_ping=True,
+    # pool_pre_ping=True breaks under asyncpg in some reload scenarios
+    # (MissingGreenlet on ping). Re-enable in production with proper config.
+    pool_pre_ping=False,
 )
 
 AsyncSessionLocal = async_sessionmaker(

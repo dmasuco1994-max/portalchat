@@ -1,11 +1,16 @@
-"""Import every model here so Base.metadata sees the full schema.
-
-Alembic --autogenerate inspects Base.metadata, so any model not imported in this
-module will be invisible to migrations.
-"""
+"""Import every model here so Base.metadata sees the full schema."""
+from app.models.conversation import Conversation
+from app.models.message import Message
 from app.models.organization import Organization
 from app.models.refresh_token import RefreshToken
 from app.models.user import User
 from app.models.whatsapp_number import WhatsAppNumber
 
-__all__ = ["Organization", "RefreshToken", "User", "WhatsAppNumber"]
+__all__ = [
+    "Conversation",
+    "Message",
+    "Organization",
+    "RefreshToken",
+    "User",
+    "WhatsAppNumber",
+]

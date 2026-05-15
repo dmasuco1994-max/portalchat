@@ -7,6 +7,8 @@ from app.core.deps import CurrentUser, DbSession, require_admin
 from app.schemas.whatsapp_number import (
     ConnectionStatusResponse,
     QrCodeResponse,
+    WebhookConfigResponse,
+    WebhookConfigUpdate,
     WhatsAppNumberCreate,
     WhatsAppNumberRead,
 )
@@ -15,20 +17,17 @@ from app.services.whatsapp_number import (
     delete_number,
     disconnect_number,
     fetch_qr,
+    get_number,
     list_numbers,
     sync_connection_status,
-    get_number,
+    update_webhook_config,
 )
 
 
 router = APIRouter(prefix="/numbers", tags=["whatsapp-numbers"])
 
 
-@router.get(
-    "",
-    response_model=list[WhatsAppNumberRead],
-    summary="List WhatsApp numbers in the current organization.",
-)
+@router.get("", response_model=list[WhatsAppNumberRead])
 async def list_(db: DbSession, current: CurrentUser) -> list[WhatsAppNumberRead]:
     numbers = await list_numbers(db, current.organization_id)
     return [WhatsAppNumberRead.model_validate(n) for n in numbers]
@@ -39,7 +38,6 @@ async def list_(db: DbSession, current: CurrentUser) -> list[WhatsAppNumberRead]
     response_model=WhatsAppNumberRead,
     status_code=status.HTTP_201_CREATED,
     dependencies=[Depends(require_admin)],
-    summary="Provision a new WhatsApp number (creates the Evolution instance).",
 )
 async def create(
     payload: WhatsAppNumberCreate,
@@ -50,15 +48,9 @@ async def create(
     return WhatsAppNumberRead.model_validate(number)
 
 
-@router.get(
-    "/{number_id}",
-    response_model=WhatsAppNumberRead,
-    summary="Get one WhatsApp number.",
-)
+@router.get("/{number_id}", response_model=WhatsAppNumberRead)
 async def get_one(
-    number_id: UUID,
-    db: DbSession,
-    current: CurrentUser,
+    number_id: UUID, db: DbSession, current: CurrentUser
 ) -> WhatsAppNumberRead:
     number = await get_number(db, current.organization_id, number_id)
     return WhatsAppNumberRead.model_validate(number)
@@ -68,26 +60,17 @@ async def get_one(
     "/{number_id}/qr",
     response_model=QrCodeResponse,
     dependencies=[Depends(require_admin)],
-    summary="Get the QR code (base64 PNG) for pairing this number with WhatsApp.",
 )
 async def get_qr(
-    number_id: UUID,
-    db: DbSession,
-    current: CurrentUser,
+    number_id: UUID, db: DbSession, current: CurrentUser
 ) -> QrCodeResponse:
     data = await fetch_qr(db, current.organization_id, number_id)
     return QrCodeResponse(**data)
 
 
-@router.get(
-    "/{number_id}/status",
-    response_model=ConnectionStatusResponse,
-    summary="Get the live connection status (polls Evolution, updates DB).",
-)
+@router.get("/{number_id}/status", response_model=ConnectionStatusResponse)
 async def get_status(
-    number_id: UUID,
-    db: DbSession,
-    current: CurrentUser,
+    number_id: UUID, db: DbSession, current: CurrentUser
 ) -> ConnectionStatusResponse:
     data = await sync_connection_status(db, current.organization_id, number_id)
     return ConnectionStatusResponse(**data)
@@ -97,12 +80,9 @@ async def get_status(
     "/{number_id}/disconnect",
     response_model=WhatsAppNumberRead,
     dependencies=[Depends(require_admin)],
-    summary="Logout from WhatsApp but keep the instance (re-link later via /qr).",
 )
 async def disconnect(
-    number_id: UUID,
-    db: DbSession,
-    current: CurrentUser,
+    number_id: UUID, db: DbSession, current: CurrentUser
 ) -> WhatsAppNumberRead:
     number = await disconnect_number(db, current.organization_id, number_id)
     return WhatsAppNumberRead.model_validate(number)
@@ -112,11 +92,31 @@ async def disconnect(
     "/{number_id}",
     status_code=status.HTTP_204_NO_CONTENT,
     dependencies=[Depends(require_admin)],
-    summary="Permanently delete this number (removes the Evolution instance too).",
 )
 async def delete_(
-    number_id: UUID,
-    db: DbSession,
-    current: CurrentUser,
+    number_id: UUID, db: DbSession, current: CurrentUser
 ) -> None:
     await delete_number(db, current.organization_id, number_id)
+
+
+@router.patch(
+    "/{number_id}/webhook",
+    response_model=WebhookConfigResponse,
+    dependencies=[Depends(require_admin)],
+    summary="Configure the tenant CRM webhook (URL, events, signing secret).",
+)
+async def patch_webhook(
+    number_id: UUID,
+    payload: WebhookConfigUpdate,
+    db: DbSession,
+    current: CurrentUser,
+) -> WebhookConfigResponse:
+    number, plain_secret = await update_webhook_config(
+        db, current.organization_id, number_id, payload
+    )
+    return WebhookConfigResponse(
+        url=number.webhook_url,
+        events=number.webhook_events,
+        active=number.webhook_active,
+        secret=plain_secret,
+    )

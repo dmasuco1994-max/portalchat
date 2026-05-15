@@ -8,8 +8,9 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import settings
 from app.models.whatsapp_number import WhatsAppNumber
-from app.schemas.whatsapp_number import WhatsAppNumberCreate
+from app.schemas.whatsapp_number import WebhookConfigUpdate, WhatsAppNumberCreate
 from app.services.evolution import (
     EvolutionAPIError,
     evolution_client,
@@ -18,8 +19,13 @@ from app.services.evolution import (
 
 
 def _generate_instance_name() -> str:
-    """Evolution-side identifier. Short, URL-safe, unique."""
     return f"wp_{secrets.token_hex(6)}"
+
+
+def _webhook_callback_url(instance_name: str) -> str:
+    """The URL Evolution should POST to when events fire on this instance."""
+    base = settings.public_backend_url.rstrip("/")
+    return f"{base}/api/v1/webhooks/evolution/{instance_name}"
 
 
 async def list_numbers(
@@ -51,12 +57,21 @@ async def get_number(
     return number
 
 
+async def get_number_by_instance(
+    db: AsyncSession, instance_name: str
+) -> WhatsAppNumber | None:
+    """Lookup for the public webhook receiver (no tenant scoping yet)."""
+    result = await db.execute(
+        select(WhatsAppNumber).where(WhatsAppNumber.instance_name == instance_name)
+    )
+    return result.scalar_one_or_none()
+
+
 async def create_number(
     db: AsyncSession,
     organization_id: UUID,
     payload: WhatsAppNumberCreate,
 ) -> WhatsAppNumber:
-    # Generate a unique instance_name, retry on the (extremely unlikely) collision.
     for _ in range(5):
         instance_name = _generate_instance_name()
         number = WhatsAppNumber(
@@ -77,7 +92,6 @@ async def create_number(
             detail="Could not allocate a unique instance name",
         )
 
-    # Create on Evolution. If this fails we roll back our row to avoid orphans.
     try:
         await evolution_client.create_instance(number.instance_name)
     except EvolutionAPIError as exc:
@@ -86,6 +100,16 @@ async def create_number(
             status_code=status.HTTP_502_BAD_GATEWAY,
             detail=f"Evolution API rejected instance creation: {exc.payload}",
         ) from exc
+
+    # Subscribe Evolution to our backend webhook URL so we receive events.
+    try:
+        await evolution_client.set_webhook(
+            number.instance_name,
+            url=_webhook_callback_url(number.instance_name),
+        )
+    except EvolutionAPIError:
+        # Webhook config failure is non-fatal at create time — admin can rebind later.
+        pass
 
     await db.commit()
     await db.refresh(number)
@@ -96,7 +120,6 @@ async def fetch_qr(
     db: AsyncSession, organization_id: UUID, number_id: UUID
 ) -> dict:
     number = await get_number(db, organization_id, number_id)
-
     try:
         response = await evolution_client.connect_instance(number.instance_name)
     except EvolutionAPIError as exc:
@@ -105,12 +128,10 @@ async def fetch_qr(
             detail=f"Evolution API error: {exc.payload}",
         ) from exc
 
-    # Evolution v2 response shape: {"base64": "...", "code": "...", "pairingCode": "..."}
     qr_base64 = response.get("base64") or response.get("qrcode", {}).get("base64")
     pairing_code = response.get("pairingCode") or response.get("code")
 
-    # Bump our status to 'connecting' while we wait for the user to scan.
-    if number.status not in ("connected",):
+    if number.status != "connected":
         number.status = "connecting"
         await db.commit()
         await db.refresh(number)
@@ -126,9 +147,7 @@ async def fetch_qr(
 async def sync_connection_status(
     db: AsyncSession, organization_id: UUID, number_id: UUID
 ) -> dict:
-    """Ask Evolution for the live state and persist any change to our row."""
     number = await get_number(db, organization_id, number_id)
-
     try:
         response = await evolution_client.connection_state(number.instance_name)
     except EvolutionAPIError as exc:
@@ -143,17 +162,13 @@ async def sync_connection_status(
         or instance_section.get("connectionStatus")
         or instance_section.get("status")
     )
-
     new_status = map_state_to_status(raw_state)
-    changed = new_status != number.status
-    if changed:
+    if new_status != number.status:
         number.status = new_status
         if new_status == "connected":
             number.last_connected_at = datetime.now(timezone.utc)
-            # Some Evolution versions return the WA number on this endpoint
             phone = instance_section.get("owner") or instance_section.get("ownerJid")
             if phone:
-                # JID format "5491134567890@s.whatsapp.net" — keep digits only.
                 number.phone_number = "".join(ch for ch in phone if ch.isdigit())
         await db.commit()
         await db.refresh(number)
@@ -172,13 +187,11 @@ async def disconnect_number(
     try:
         await evolution_client.logout_instance(number.instance_name)
     except EvolutionAPIError as exc:
-        # If Evolution says "instance not connected", that's fine — treat as success.
         if exc.status_code not in (400, 404):
             raise HTTPException(
                 status_code=status.HTTP_502_BAD_GATEWAY,
                 detail=f"Evolution API error: {exc.payload}",
             ) from exc
-
     number.status = "disconnected"
     await db.commit()
     await db.refresh(number)
@@ -192,12 +205,47 @@ async def delete_number(
     try:
         await evolution_client.delete_instance(number.instance_name)
     except EvolutionAPIError as exc:
-        # If the instance was already gone on Evolution's side, proceed with DB cleanup.
         if exc.status_code not in (400, 404):
             raise HTTPException(
                 status_code=status.HTTP_502_BAD_GATEWAY,
                 detail=f"Evolution API error: {exc.payload}",
             ) from exc
-
     await db.delete(number)
     await db.commit()
+
+
+async def update_webhook_config(
+    db: AsyncSession,
+    organization_id: UUID,
+    number_id: UUID,
+    payload: WebhookConfigUpdate,
+) -> tuple[WhatsAppNumber, str | None]:
+    """Update CRM webhook config. Returns (number, plain_secret_or_none).
+
+    plain_secret is only returned on initial set or rotation; future GET calls
+    will not expose it.
+    """
+    number = await get_number(db, organization_id, number_id)
+
+    # Clearing config
+    if payload.url is None:
+        number.webhook_url = None
+        number.webhook_events = None
+        number.webhook_active = False
+        number.webhook_secret = None
+        await db.commit()
+        await db.refresh(number)
+        return number, None
+
+    new_secret_plain: str | None = None
+    if number.webhook_secret is None or payload.rotate_secret:
+        new_secret_plain = secrets.token_urlsafe(32)
+        number.webhook_secret = new_secret_plain
+
+    number.webhook_url = str(payload.url)
+    number.webhook_events = payload.events
+    number.webhook_active = payload.active
+
+    await db.commit()
+    await db.refresh(number)
+    return number, new_secret_plain

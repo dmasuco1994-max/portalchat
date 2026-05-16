@@ -27,10 +27,14 @@ services:
       LOG_LEVEL: ERROR,WARN
 
   backend:
-    volumes: []
+    # Drop the bind-mount from dev but KEEP the named media_cache volume —
+    # downloaded media persists across container restarts and image rebuilds.
+    volumes:
+      - media_cache:/app/media-cache
     command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "2"]
     environment:
       ENVIRONMENT: production
+      MEDIA_CACHE_DIR: /app/media-cache
 
   worker:
     volumes: []

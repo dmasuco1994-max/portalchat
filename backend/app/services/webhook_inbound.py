@@ -113,6 +113,7 @@ async def handle_evolution_event(
     webhook_secret = number.webhook_secret
     webhook_events = list(number.webhook_events or [])
     webhook_format = number.webhook_format
+    webhook_extra = dict(number.webhook_extra or {})
     our_phone_number = number.phone_number
     instance_name = number.instance_name
     organization_id = number.organization_id
@@ -142,6 +143,9 @@ async def handle_evolution_event(
             )
 
         if should_deliver:
+            apikey_token = webhook_extra.get("token") if isinstance(
+                webhook_extra.get("token"), str
+            ) else None
             delivery = await enqueue_delivery(
                 db,
                 arq_pool,
@@ -154,6 +158,7 @@ async def handle_evolution_event(
                 raw_event_payload=payload,
                 format=webhook_format,
                 our_phone_number=our_phone_number,
+                apikey=apikey_token,
             )
             summary["crm_delivery_id"] = str(delivery.id)
             summary["crm_delivery_status"] = delivery.status

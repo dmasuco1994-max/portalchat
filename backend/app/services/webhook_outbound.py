@@ -67,12 +67,18 @@ def build_apiwha_payload(
     *,
     our_phone_number: str | None,
     raw_event: dict[str, Any],
+    apikey: str | None = None,
 ) -> dict[str, Any]:
     """Translate an Evolution MESSAGES_UPSERT inbound event into the flat
     apiwha message shape Neotel's CAPIWHA endpoint parses.
 
     apiwha message fields (from the public Ruby/PHP SDKs):
       id, number, from, to, type ("IN"/"OUT"), text, creation_date, custom_data
+
+    The optional `apikey` is the Token Neotel generates for the account; some
+    deployments validate it against the incoming webhook body, so we include it
+    as an extra field when configured. Apiwha's send/pull endpoints all carry
+    `apikey` as a form field, so adding it to the webhook is consistent.
     """
     data = raw_event.get("data") or {}
     key = data.get("key") or {}
@@ -92,7 +98,7 @@ def build_apiwha_payload(
     else:
         creation = datetime.now(timezone.utc)
 
-    return {
+    body: dict[str, Any] = {
         "id": str(key.get("id") or ""),
         "number": remote_phone,
         "from": remote_phone,
@@ -102,6 +108,9 @@ def build_apiwha_payload(
         "creation_date": creation.strftime("%Y-%m-%d %H:%M:%S"),
         "custom_data": data.get("pushName") or "",
     }
+    if apikey:
+        body["apikey"] = apikey
+    return body
 
 
 # ---- Enqueue (called from the inbound webhook handler) -------------------
@@ -119,6 +128,7 @@ async def enqueue_delivery(
     max_attempts: int = 5,
     format: str = "portal",
     our_phone_number: str | None = None,
+    apikey: str | None = None,
 ) -> WebhookDelivery:
     """Persist a delivery row and dispatch an arq job for it.
 
@@ -130,6 +140,7 @@ async def enqueue_delivery(
         snapshot = build_apiwha_payload(
             our_phone_number=our_phone_number,
             raw_event=raw_event_payload,
+            apikey=apikey,
         )
     else:
         snapshot = _build_envelope(event_type, instance_name, raw_event_payload)

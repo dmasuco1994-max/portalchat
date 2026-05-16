@@ -45,13 +45,38 @@ async def send_text_message(
 async def list_conversations_for_number(
     db: AsyncSession, organization_id: UUID, number_id: UUID
 ) -> list[Conversation]:
-    await get_number(db, organization_id, number_id)  # tenant scoping check
+    number = await get_number(db, organization_id, number_id)  # tenant check
     result = await db.execute(
         select(Conversation)
         .where(Conversation.whatsapp_number_id == number_id)
         .order_by(Conversation.last_message_at.desc().nullslast())
     )
-    return list(result.scalars().all())
+    conversations = list(result.scalars().all())
+
+    # Trigger profile-picture refreshes for any conversation that has never
+    # been fetched. The list page polls every 5s, so by the time the next
+    # poll lands the URL is usually saved and the avatar renders. The TTL
+    # check inside the spawn target prevents thrashing.
+    from datetime import datetime, timezone
+
+    from app.services.webhook_inbound import (
+        PROFILE_PICTURE_TTL,
+        _fetch_profile_picture_background,
+        _spawn,
+    )
+
+    now = datetime.now(timezone.utc)
+    for conv in conversations:
+        last_fetch = conv.profile_picture_fetched_at
+        if last_fetch is not None and now - last_fetch < PROFILE_PICTURE_TTL:
+            continue
+        _spawn(
+            _fetch_profile_picture_background(
+                conv.id, number.instance_name, conv.remote_jid
+            )
+        )
+
+    return conversations
 
 
 async def list_messages_for_conversation(

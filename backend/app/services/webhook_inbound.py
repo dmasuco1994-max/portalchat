@@ -96,6 +96,21 @@ def _extract_text_and_type(
 PROFILE_PICTURE_TTL = timedelta(hours=6)
 
 
+# Strong references to in-flight background tasks. Without this set, Python
+# asyncio can garbage-collect a Task whose coroutine is awaiting I/O — the
+# event loop only holds weak refs. Symptom: profile-picture fetches succeed
+# intermittently (the first one or two complete, later ones get reaped mid-
+# await). See https://docs.python.org/3/library/asyncio-task.html#creating-tasks
+_BACKGROUND_TASKS: set[asyncio.Task] = set()
+
+
+def _spawn(coro) -> asyncio.Task:
+    task = asyncio.create_task(coro)
+    _BACKGROUND_TASKS.add(task)
+    task.add_done_callback(_BACKGROUND_TASKS.discard)
+    return task
+
+
 async def _fetch_profile_picture_background(
     conversation_id: uuid.UUID,
     instance_name: str,
@@ -104,16 +119,23 @@ async def _fetch_profile_picture_background(
     """Fire-and-forget: fetch the contact's profile picture URL via Evolution
     and persist it. Best-effort — failures are swallowed because this is not
     on the critical path of message ingest."""
+    from sqlalchemy import update
+
     from app.db.session import AsyncSessionLocal
     from app.services.evolution import evolution_client
 
+    logger.info(
+        "Refreshing profile picture for conversation %s (jid=%s)",
+        conversation_id,
+        remote_jid,
+    )
     try:
         url = await evolution_client.fetch_profile_picture_url(
             instance_name, remote_jid
         )
         async with AsyncSessionLocal() as session:
             await session.execute(
-                Conversation.__table__.update()
+                update(Conversation)
                 .where(Conversation.id == conversation_id)
                 .values(
                     profile_picture_url=url,
@@ -121,6 +143,11 @@ async def _fetch_profile_picture_background(
                 )
             )
             await session.commit()
+        logger.info(
+            "Profile picture for conversation %s: %s",
+            conversation_id,
+            "set" if url else "not available",
+        )
     except Exception as exc:  # noqa: BLE001 — background task, log & swallow
         logger.warning(
             "Could not refresh profile picture for conversation %s: %s",
@@ -164,7 +191,7 @@ async def _get_or_create_conversation(
             needs_pic_refresh = True
 
     if needs_pic_refresh:
-        asyncio.create_task(
+        _spawn(
             _fetch_profile_picture_background(
                 conv.id, number.instance_name, remote_jid
             )

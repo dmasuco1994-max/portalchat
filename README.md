@@ -110,6 +110,9 @@ modifications on the Neotel host.
 
 ## Deploying to an internal VM (production)
 
+**For the full top-to-bottom walkthrough (VM creation → operativo en ~40min),
+ver [DEPLOY.md](DEPLOY.md).** Resumen abajo.
+
 For Neotel customers running on a private network, the recommended deploy is a
 dedicated VM **inside** that network. Neotel server reaches the VM by its
 private IP, no tunnel or public host needed.

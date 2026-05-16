@@ -45,3 +45,49 @@ export interface ConnectionStatus {
   status: NumberStatus;
   raw_state: string | null;
 }
+
+export interface Conversation {
+  id: string;
+  whatsapp_number_id: string;
+  remote_jid: string;
+  remote_phone: string | null;
+  remote_name: string | null;
+  last_message_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export type MessageDirection = "inbound" | "outbound";
+export type MessageContentType =
+  | "text"
+  | "image"
+  | "audio"
+  | "video"
+  | "document"
+  | "sticker"
+  | "location"
+  | "contact"
+  | "reaction"
+  | "unknown";
+export type MessageDeliveryStatus =
+  | "pending"
+  | "sent"
+  | "delivered"
+  | "read"
+  | "failed";
+
+export interface Message {
+  id: string;
+  conversation_id: string;
+  whatsapp_number_id: string;
+  direction: MessageDirection;
+  evolution_message_id: string;
+  from_jid: string;
+  to_jid: string;
+  content_type: MessageContentType;
+  content_text: string | null;
+  media_url: string | null;
+  status: MessageDeliveryStatus;
+  sent_at: string;
+  created_at: string;
+}

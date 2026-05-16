@@ -4,7 +4,7 @@ import * as React from "react";
 import Link from "next/link";
 import { use } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, PhoneOff, Trash2 } from "lucide-react";
+import { ArrowLeft, MessageSquare, PhoneOff, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
 import { useAuth } from "@/components/providers/auth-provider";
@@ -101,17 +101,20 @@ export default function NumberDetailPage({
             )}
           </div>
         </div>
-        {canManage && (
-          <div className="flex items-center gap-2">
-            {isConnected && (
-              <Button
-                variant="outline"
-                onClick={() => setConfirmDisconnect(true)}
-              >
-                <PhoneOff className="size-4" />
-                Disconnect
-              </Button>
-            )}
+        <div className="flex flex-wrap items-center gap-2">
+          <Button asChild variant="outline">
+            <Link href={`/numbers/${id}/conversations`}>
+              <MessageSquare className="size-4" />
+              Conversations
+            </Link>
+          </Button>
+          {canManage && isConnected && (
+            <Button variant="outline" onClick={() => setConfirmDisconnect(true)}>
+              <PhoneOff className="size-4" />
+              Disconnect
+            </Button>
+          )}
+          {canManage && (
             <Button
               variant="destructive"
               onClick={() => setConfirmDelete(true)}
@@ -119,8 +122,8 @@ export default function NumberDetailPage({
               <Trash2 className="size-4" />
               Delete
             </Button>
-          </div>
-        )}
+          )}
+        </div>
       </div>
 
       {!isConnected && !isFailed && canManage && (

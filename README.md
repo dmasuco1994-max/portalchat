@@ -71,10 +71,10 @@ docker-compose.yml    Service orchestration
 - [x] **Phase 3** — WhatsApp number management (Evolution instances, QR scan flow)
 - [x] **Phase 4** — Incoming webhook router + message persistence
 - [x] **Phase 5** — Outgoing REST API + webhook queue to external CRMs
-- [ ] **Phase 6** — Frontend: login, dashboard, QR scanner, conversation viewer
+- [x] **Phase 6** — Frontend: login, dashboard, QR scanner, conversation viewer
     - [x] 6.1 — Bootstrap: Next.js + auth (login/signup) + protected shell + API client
-    - [ ] 6.2 — Numbers + QR
-    - [ ] 6.3 — Conversation viewer
+    - [x] 6.2 — Numbers + QR
+    - [x] 6.3 — Conversation viewer
 - [ ] **Phase 7** — Frontend: webhook config UI, theming polish
 
 ## Frontend auth model

@@ -38,15 +38,32 @@ const APIWHA_DEFAULT_URL = "https://s2.neotel.us/NeoWebhook/api/ApiWha";
 const NEOTEL_CUSTOM_DEFAULT_URL =
   "https://s2.neotel.cc/neowebhook/api/CustomAccount/Messages/";
 
-const schema = z.object({
-  format: z.enum(["portal", "apiwha_neotel", "neotel_custom"]),
-  url: z.string().url("Must be a valid URL"),
-  active: z.boolean(),
-  events: z.array(z.string()),
-  rotateSecret: z.boolean(),
-  neotelToken: z.string(),
-  neotelAccountId: z.string(),
-});
+const schema = z
+  .object({
+    format: z.enum(["portal", "apiwha_neotel", "neotel_custom"]),
+    url: z.string().url("Must be a valid URL"),
+    active: z.boolean(),
+    events: z.array(z.string()),
+    rotateSecret: z.boolean(),
+    neotelToken: z.string(),
+    neotelAccountId: z.string(),
+  })
+  .superRefine((data, ctx) => {
+    if (data.format === "neotel_custom") {
+      // Reject URLs that don't include a channel segment after /Messages/.
+      // Neotel's API requires …/CustomAccount/Messages/{channel[@provider]}
+      // and returns 404 otherwise.
+      const match = data.url.match(/\/Messages\/?([^/?#]*)/);
+      if (!match || !match[1]) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["url"],
+          message:
+            "Append the channel segment after /Messages/ — e.g. /Messages/myChannel or /Messages/myChannel@MyProvider",
+        });
+      }
+    }
+  });
 
 type FormValues = z.infer<typeof schema>;
 
@@ -232,18 +249,20 @@ export function WebhookForm({ number }: { number: WhatsAppNumber }) {
                         Portal — JSON + HMAC (default)
                       </option>
                       <option value="apiwha_neotel">
-                        APIWha (Neotel CAPIWHA) — inbound only
+                        APIWha (Neotel CAPIWHA) — bidirectional with
+                        .config override
                       </option>
                       <option value="neotel_custom">
-                        Neotel Custom Provider — bidirectional
+                        Neotel Custom Provider — bidirectional (needs
+                        Custom Provider account)
                       </option>
                     </select>
                   </FormControl>
                   <FormDescription>
                     {isNeotelCustom
-                      ? "We forward inbound messages + status updates as Custom Provider JSON, and expose a callback URL so Neotel can dispatch agent replies through Evolution."
+                      ? "Custom Provider JSON. Requires a Custom Provider account on Neotel's side AND the channel name they assigned you in the URL below."
                       : isApiwha
-                        ? "Forwards only inbound text messages, form-encoded, no signature. Cannot send."
+                        ? "rapiwha drop-in. INBOX webhooks out + /send_message.php in. Requires Neotel's focal point to override the apiwha host in the SocialMedia .config."
                         : "Forwards every event you pick below as signed JSON."}
                   </FormDescription>
                   <FormMessage />

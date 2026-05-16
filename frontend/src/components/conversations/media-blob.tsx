@@ -1,18 +1,56 @@
 "use client";
 
 import * as React from "react";
-import { useQuery } from "@tanstack/react-query";
+import {
+  useQuery,
+  useQueryClient,
+  type QueryCacheNotifyEvent,
+} from "@tanstack/react-query";
 import { Download, FileText, ImageOff, Loader2 } from "lucide-react";
 
 import { rawFetchMedia } from "@/lib/api/client";
 import { cn } from "@/lib/utils";
 
-/** Fetch the bytes of a media message and return an object URL.
- *  Returns null while loading and on error (component decides what to show).
- *  Revokes the URL automatically when the component unmounts or the message
- *  id changes. */
+/** Fetch the bytes of a media message and return a stable object URL.
+ *
+ *  Lifecycle: we DON'T revoke the URL when a component unmounts. The same
+ *  cached entry can have many subscribers (the conversation re-renders on
+ *  every 3s poll and components remount in React strict mode). Revoking on
+ *  unmount turned the first photo into the only photo — the cached `url`
+ *  string survived but pointed to bytes the browser had already freed.
+ *
+ *  Instead we subscribe to TanStack Query's cache events at module level
+ *  and revoke when the entry is actually removed from cache (gcTime expiry
+ *  or explicit invalidate). This is the lifecycle that matches the URL's
+ *  ownership: the cache owns the bytes, so the cache decides when to free
+ *  them. */
+const _revokedListenerInstalled = { current: false };
+
+function installRevokeListenerOnce(
+  client: ReturnType<typeof useQueryClient>
+): void {
+  if (_revokedListenerInstalled.current) return;
+  _revokedListenerInstalled.current = true;
+  client.getQueryCache().subscribe((event: QueryCacheNotifyEvent) => {
+    if (event.type === "removed") {
+      const key = event.query.queryKey;
+      if (Array.isArray(key) && key[0] === "media") {
+        const data = event.query.state.data as
+          | { url?: string }
+          | undefined;
+        if (data?.url) URL.revokeObjectURL(data.url);
+      }
+    }
+  });
+}
+
 function useMediaBlobUrl(messageId: string) {
-  const query = useQuery({
+  const client = useQueryClient();
+  React.useEffect(() => {
+    installRevokeListenerOnce(client);
+  }, [client]);
+
+  return useQuery({
     queryKey: ["media", messageId],
     queryFn: async () => {
       const res = await rawFetchMedia(`/messages/${messageId}/media`);
@@ -20,18 +58,11 @@ function useMediaBlobUrl(messageId: string) {
       return { url: URL.createObjectURL(blob), blob };
     },
     staleTime: Infinity,
-    gcTime: 5 * 60 * 1000,
+    // Hang onto the bytes longer than the default — re-fetching costs an
+    // Evolution round-trip + decryption.
+    gcTime: 30 * 60 * 1000,
     retry: 1,
   });
-
-  React.useEffect(() => {
-    const url = query.data?.url;
-    return () => {
-      if (url) URL.revokeObjectURL(url);
-    };
-  }, [query.data?.url]);
-
-  return query;
 }
 
 export function MediaImage({

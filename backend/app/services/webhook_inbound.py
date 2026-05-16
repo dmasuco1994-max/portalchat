@@ -554,8 +554,13 @@ async def _handle_message_upsert(
     if existing.scalar_one_or_none() is not None:
         return {"deduped": evolution_message_id}
 
+    # On outbound (fromMe=True), Evolution's `pushName` is OUR operator's
+    # WhatsApp profile name, not the contact's. Stomping `remote_name` with
+    # that would relabel every conversation we reply to as ourselves. Only
+    # trust pushName when it actually came FROM the contact.
+    contact_push_name = None if from_me else data.get("pushName")
     conv = await _get_or_create_conversation(
-        db, number, remote_jid, push_name=data.get("pushName")
+        db, number, remote_jid, push_name=contact_push_name
     )
 
     content_type, text, media_url, media_mimetype = _extract_content(

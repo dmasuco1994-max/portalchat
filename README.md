@@ -76,6 +76,29 @@ docker-compose.yml    Service orchestration
     - [x] 6.2 — Numbers + QR
     - [x] 6.3 — Conversation viewer
 - [x] **Phase 7** — Frontend: webhook config UI, deliveries debug viewer, theme toggle
+- [x] **Phase 8** — Neotel integration (multi-format webhook adapters)
+    - [x] 8.1 — `apiwha_neotel` format (rapiwha drop-in spec)
+    - [x] 8.2 — `neotel_custom` format (Custom Provider, bidirectional)
+    - [x] 8.3 — `/send_message.php` etc. rapiwha-compat endpoints at root
+- [x] **Phase 9** — `external_neotel` format (Neotel External Application API, fully self-service)
+
+## Neotel integration paths
+
+The webhook format dropdown on each number's webhook page chooses how outbound
+events are shaped and which inbound endpoint Neotel calls. Pick based on the
+access you have on the Neotel side:
+
+| Format | Neotel-side setup | Direction | Caveats |
+|--------|-------------------|-----------|---------|
+| `portal` | n/a — generic | Outbound only (JSON + HMAC) | Default for non-Neotel CRMs |
+| `apiwha_neotel` | CAPIWHA account + `.config` override of apiwha host | Bidirectional | Requires Neotel admin / focal point to repoint `panel.apiwha.com` |
+| `neotel_custom` | Custom Provider account with assigned channel | Bidirectional | Requires Neotel-side Custom Provider provisioning |
+| `external_neotel` | Aplicación Externa (self-service, "Obtener Credenciales" button) | Customer-initiated only | No focal point needed; agents can only reply, can't start chats from the WhatsApp dropdown |
+
+For Neotel deployments on a private network where the user can deploy VMs
+internally but doesn't have shell on the Neotel server, **`external_neotel`
+is the only viable path** — the others all need filesystem or DNS
+modifications on the Neotel host.
 
 ## Frontend auth model
 
@@ -84,6 +107,85 @@ docker-compose.yml    Service orchestration
 - **Silent refresh:** on every page load the `AuthProvider` calls `POST /api/auth/refresh`, which uses the cookie to rotate the pair and returns a fresh access token plus the current user.
 - **Auto retry on 401:** the API client retries the original request once after a silent refresh; if that fails too, it clears state and pushes to `/login`.
 - **Edge guard:** middleware blocks protected routes when no refresh cookie is present, so unauthenticated traffic never reaches client components.
+
+## Deploying to an internal VM (production)
+
+For Neotel customers running on a private network, the recommended deploy is a
+dedicated VM **inside** that network. Neotel server reaches the VM by its
+private IP, no tunnel or public host needed.
+
+### VM sizing
+
+| Resource | Minimum | Recommended |
+|----------|---------|-------------|
+| RAM | 4 GB | 8 GB |
+| vCPU | 2 | 4 |
+| Disk | 20 GB | 50 GB |
+| OS | Ubuntu 22.04 / Debian 12 | same |
+
+### One-time setup on the VM
+
+```bash
+# 1. Install docker engine + compose plugin (Debian/Ubuntu)
+curl -fsSL https://get.docker.com | sh
+sudo usermod -aG docker $USER  # log out + in after this
+
+# 2. Clone the repo
+git clone <repo-url> /opt/whatsapp-portal
+cd /opt/whatsapp-portal
+
+# 3. Create .env (copy values from your dev .env, then change at minimum:
+#    - SECRET_KEY: generate fresh, e.g. `openssl rand -hex 32`
+#    - POSTGRES_PASSWORD: fresh
+#    - EVOLUTION_API_KEY: fresh
+#    - DATABASE_URL: update to match the new password
+#    - NEXT_PUBLIC_API_BASE_URL: http://<VM-private-IP>:8000/api/v1
+#    - NEXT_PUBLIC_APP_URL: http://<VM-private-IP>:3000
+#    - ENVIRONMENT: production
+nano .env
+
+# 4. Build + launch the prod stack
+docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
+
+# 5. Run migrations
+docker compose exec backend alembic upgrade head
+
+# 6. Smoke-check
+bash deploy/check.sh
+```
+
+### Networking checklist
+
+- VM listens on:
+  - `8000` (backend) — Neotel needs to reach this
+  - `3000` (frontend) — your team needs to reach this from inside the network
+  - `8080` (Evolution) — optional, only needed for direct Evolution debugging
+- Firewall: allow the Neotel server's IP to reach `8000/tcp`
+- DNS: optional — give the VM a friendly internal hostname (e.g. `wa-portal.local`)
+  and use it in `NEXT_PUBLIC_API_BASE_URL` instead of the raw IP
+
+### Pairing the WhatsApp number
+
+The simplest approach is **re-pair from scratch** on the new VM (~30 seconds):
+- Log into the frontend at `http://<VM-IP>:3000`
+- Create your number, click into the detail page, scan the QR with WhatsApp
+
+If you need to **migrate the existing pairing** without re-scanning, copy these
+docker volumes from the old host to the new VM before first start:
+- `<project>_postgres_data` (auth + multi-tenant data + Evolution's tables)
+- `<project>_evolution_instances` (Evolution session files)
+- `<project>_redis_data` (queued jobs — usually safe to skip)
+
+### Configuring Neotel (External Application path)
+
+1. In Neotel: `Redes Sociales → Aplicaciones Externas` → new account
+2. Click "Obtener Credenciales" → copy `ApplicationId` and `AccessToken`
+3. In our portal: number's Webhook page → format `Neotel External Application`,
+   paste ApplicationId + AccessToken, save
+4. Copy the callback URL from the green panel
+5. Paste it into Neotel's `Webhook URL` field on the same account
+6. Verify: send a WhatsApp from another phone → conversation should appear in
+   Neotel within ~1-2 seconds. Agent reply → arrives at the WhatsApp phone.
 
 ## Useful commands
 

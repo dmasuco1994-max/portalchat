@@ -1,0 +1,52 @@
+# Production override for the internal VM deployment.
+#
+# Use with:
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
+#
+# Differences from the dev compose:
+#   - No bind mounts on backend/worker/frontend (code is baked into the image)
+#   - No HMR polling (dev-only)
+#   - Frontend runs `next start` against a built image, not `next dev`
+#   - Logging tuned down to INFO
+#   - postgres NOT exposed on host port (only reachable inside the docker net)
+#   - redis NOT exposed either
+#   - Evolution still exposes 8080 because the agent / debugging may need it
+services:
+  postgres:
+    ports: []
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-portal}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD required in prod}
+      POSTGRES_DB: ${POSTGRES_DB:-portal}
+
+  redis:
+    ports: []
+
+  evolution:
+    environment:
+      LOG_LEVEL: ERROR,WARN
+
+  backend:
+    volumes: []
+    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "2"]
+    environment:
+      ENVIRONMENT: production
+
+  worker:
+    volumes: []
+    environment:
+      ENVIRONMENT: production
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.prod
+    volumes: []
+    environment:
+      NODE_ENV: production
+      BACKEND_INTERNAL_URL: http://backend:8000/api/v1
+      # IMPORTANT: set NEXT_PUBLIC_API_BASE_URL in .env to the VM's reachable
+      # hostname so the frontend callback URLs come out right
+      # (e.g. http://10.0.0.42:8000/api/v1).
+      NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:?NEXT_PUBLIC_API_BASE_URL required in prod}
+      NEXT_PUBLIC_APP_URL: ${NEXT_PUBLIC_APP_URL:?NEXT_PUBLIC_APP_URL required in prod}

@@ -1,0 +1,39 @@
+# Multi-stage production build.
+#
+# Stage 1: install deps + build the Next app
+# Stage 2: copy the standalone output into a slim image
+#
+# Next.js needs NEXT_PUBLIC_* env vars at build time because they get inlined
+# into the client bundle. The compose file passes them via build args.
+
+FROM node:22-alpine AS builder
+
+ARG NEXT_PUBLIC_API_BASE_URL
+ARG NEXT_PUBLIC_APP_URL
+ENV NEXT_PUBLIC_API_BASE_URL=${NEXT_PUBLIC_API_BASE_URL}
+ENV NEXT_PUBLIC_APP_URL=${NEXT_PUBLIC_APP_URL}
+ENV NEXT_TELEMETRY_DISABLED=1
+
+WORKDIR /app
+
+COPY package.json package-lock.json* ./
+RUN npm ci || npm install
+
+COPY . .
+RUN npm run build
+
+FROM node:22-alpine AS runtime
+
+WORKDIR /app
+ENV NODE_ENV=production \
+    NEXT_TELEMETRY_DISABLED=1 \
+    PORT=3000
+
+# next.config.ts has output: "standalone" so .next/standalone is self-contained.
+COPY --from=builder /app/public ./public
+COPY --from=builder /app/.next/standalone ./
+COPY --from=builder /app/.next/static ./.next/static
+
+EXPOSE 3000
+
+CMD ["node", "server.js"]

@@ -220,7 +220,14 @@ async def fetch_qr(
         ) from exc
 
     qr_base64 = response.get("base64") or response.get("qrcode", {}).get("base64")
-    pairing_code = response.get("pairingCode") or response.get("code")
+    # Only the real human-typeable pairingCode. Evolution v2's `code` field
+    # is the raw QR base64 blob (long, comma-separated, NOT a pair code) —
+    # surfacing it to the UI rendered a wall of garbage.
+    pairing_code = response.get("pairingCode")
+    if isinstance(pairing_code, str):
+        pairing_code = pairing_code.strip() or None
+    else:
+        pairing_code = None
 
     if number.status != "connected":
         number.status = "connecting"

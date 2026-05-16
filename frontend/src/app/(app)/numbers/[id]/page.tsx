@@ -4,7 +4,7 @@ import * as React from "react";
 import Link from "next/link";
 import { use } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, MessageSquare, PhoneOff, Trash2 } from "lucide-react";
+import { ArrowLeft, MessageSquare, PhoneOff, Trash2, Webhook } from "lucide-react";
 import { toast } from "sonner";
 
 import { useAuth } from "@/components/providers/auth-provider";
@@ -106,6 +106,12 @@ export default function NumberDetailPage({
             <Link href={`/numbers/${id}/conversations`}>
               <MessageSquare className="size-4" />
               Conversations
+            </Link>
+          </Button>
+          <Button asChild variant="outline">
+            <Link href={`/numbers/${id}/webhook`}>
+              <Webhook className="size-4" />
+              Webhook
             </Link>
           </Button>
           {canManage && isConnected && (

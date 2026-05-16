@@ -5,6 +5,7 @@ import Link from "next/link";
 import { LogOut } from "lucide-react";
 
 import { useAuth } from "@/components/providers/auth-provider";
+import { ThemeToggle } from "@/components/app/theme-toggle";
 import { Button } from "@/components/ui/button";
 
 export function AppHeader() {
@@ -26,12 +27,13 @@ export function AppHeader() {
         <Link href="/dashboard" className="font-semibold">
           WhatsApp Portal
         </Link>
-        <div className="flex items-center gap-3 text-sm">
+        <div className="flex items-center gap-2 text-sm">
           {user && (
-            <span className="text-muted-foreground">
+            <span className="hidden text-muted-foreground sm:inline">
               {user.email} · {user.role}
             </span>
           )}
+          <ThemeToggle />
           <Button
             variant="ghost"
             size="sm"

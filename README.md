@@ -75,7 +75,7 @@ docker-compose.yml    Service orchestration
     - [x] 6.1 — Bootstrap: Next.js + auth (login/signup) + protected shell + API client
     - [x] 6.2 — Numbers + QR
     - [x] 6.3 — Conversation viewer
-- [ ] **Phase 7** — Frontend: webhook config UI, theming polish
+- [x] **Phase 7** — Frontend: webhook config UI, deliveries debug viewer, theme toggle
 
 ## Frontend auth model
 

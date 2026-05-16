@@ -91,3 +91,44 @@ export interface Message {
   sent_at: string;
   created_at: string;
 }
+
+export interface WebhookConfigResponse {
+  url: string | null;
+  events: string[] | null;
+  active: boolean;
+  /** Only present on the response that creates or rotates the secret. */
+  secret: string | null;
+}
+
+export interface WebhookConfigUpdate {
+  /** Pass null to clear the URL. Omit to keep current. */
+  url?: string | null;
+  events?: string[] | null;
+  active?: boolean;
+  rotate_secret?: boolean;
+}
+
+export type WebhookDeliveryStatus =
+  | "pending"
+  | "in_progress"
+  | "success"
+  | "failed"
+  | "abandoned";
+
+export interface WebhookDelivery {
+  id: string;
+  whatsapp_number_id: string;
+  target_url: string;
+  event_type: string;
+  attempts: number;
+  max_attempts: number;
+  status: WebhookDeliveryStatus;
+  last_attempt_at: string | null;
+  next_retry_at: string | null;
+  completed_at: string | null;
+  response_status: number | null;
+  response_body_excerpt: string | null;
+  error_message: string | null;
+  created_at: string;
+  updated_at: string;
+}

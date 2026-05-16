@@ -27,6 +27,7 @@ export default function DashboardPage() {
         title="Números"
         description="Las líneas de WhatsApp conectadas a tu workspace."
         actions={canCreate && <NewNumberDialog />}
+        accentClass="accent-numbers"
       />
 
       {isPending && (

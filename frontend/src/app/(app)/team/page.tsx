@@ -46,6 +46,7 @@ export default function TeamPage() {
         title="Equipo"
         description="Miembros del workspace y sus permisos."
         actions={isAdmin && <InviteUserDialog canAssignOwner={isOwner} />}
+        accentClass="accent-team"
       />
 
       {isPending && (

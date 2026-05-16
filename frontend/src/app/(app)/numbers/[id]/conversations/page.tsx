@@ -65,6 +65,7 @@ export default function ConversationsPage({
       <PageHeader
         title={numberQuery.data?.name ?? "Conversaciones"}
         description="Ordenadas por actividad más reciente. Polling cada 5 segundos."
+        accentClass="accent-conversations"
       />
 
       <div className="mb-4 relative">

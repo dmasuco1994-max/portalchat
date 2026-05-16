@@ -17,26 +17,42 @@ import { useAuth } from "@/components/providers/auth-provider";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
-const NAV: { href: string; label: string; icon: React.ReactNode }[] = [
+type SectionId = "numbers" | "conversations" | "team" | "settings";
+
+const NAV: {
+  id: SectionId;
+  href: string;
+  label: string;
+  icon: React.ReactNode;
+  accentClass: string;
+}[] = [
   {
+    id: "numbers",
     href: "/dashboard",
     label: "Números",
     icon: <Phone className="size-4" />,
+    accentClass: "accent-numbers",
   },
   {
+    id: "conversations",
     href: "/conversations",
     label: "Conversaciones",
     icon: <MessageSquare className="size-4" />,
+    accentClass: "accent-conversations",
   },
   {
+    id: "team",
     href: "/team",
     label: "Equipo",
     icon: <Users className="size-4" />,
+    accentClass: "accent-team",
   },
   {
+    id: "settings",
     href: "/settings",
     label: "Ajustes",
     icon: <Settings className="size-4" />,
+    accentClass: "accent-settings",
   },
 ];
 
@@ -73,21 +89,33 @@ export function AppSidebar() {
         {NAV.map((item) => {
           const active =
             item.href === "/dashboard"
-              ? pathname === "/dashboard" ||
-                pathname.startsWith("/numbers")
+              ? pathname === "/dashboard" || pathname.startsWith("/numbers")
               : pathname.startsWith(item.href);
           return (
             <Link
               key={item.href}
               href={item.href}
               className={cn(
-                "flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors",
+                "group relative flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-all",
+                item.accentClass,
                 active
-                  ? "bg-sidebar-accent text-sidebar-accent-foreground"
-                  : "text-sidebar-foreground/80 hover:bg-sidebar-accent/50 hover:text-sidebar-accent-foreground"
+                  ? "bg-section-soft text-sidebar-accent-foreground shadow-sm"
+                  : "text-sidebar-foreground/80 hover:bg-sidebar-accent/40 hover:text-sidebar-accent-foreground"
               )}
             >
-              {item.icon}
+              {active && (
+                <span className="absolute left-0 top-1/2 h-5 w-0.5 -translate-y-1/2 rounded-r bg-section-strong" />
+              )}
+              <span
+                className={cn(
+                  "flex size-7 items-center justify-center rounded-md transition-colors",
+                  active
+                    ? "bg-section-strong"
+                    : "bg-sidebar-accent/30 text-section group-hover:bg-section-soft"
+                )}
+              >
+                {item.icon}
+              </span>
               <span>{item.label}</span>
             </Link>
           );
@@ -96,7 +124,7 @@ export function AppSidebar() {
 
       <div className="border-t border-sidebar-border px-3 py-3">
         <div className="flex items-center gap-3 rounded-md px-2 py-2">
-          <span className="flex size-9 shrink-0 items-center justify-center rounded-full bg-brand-gradient text-sm font-semibold text-white">
+          <span className="flex size-9 shrink-0 items-center justify-center rounded-full bg-brand-gradient text-sm font-semibold text-white shadow-sm">
             {initials || "?"}
           </span>
           <div className="min-w-0 flex-1">

@@ -18,6 +18,7 @@ export default function ConversationsIndexPage() {
       <PageHeader
         title="Conversaciones"
         description="Elegí un número para ver sus conversaciones."
+        accentClass="accent-conversations"
       />
 
       {isPending && (

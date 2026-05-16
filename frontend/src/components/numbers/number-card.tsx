@@ -15,7 +15,10 @@ export function NumberCard({ number }: { number: WhatsAppNumber }) {
 
   return (
     <Link href={`/numbers/${number.id}`} className="block">
-      <Card className="group relative overflow-hidden transition-all hover:border-primary/40 hover:shadow-md">
+      <Card className="group relative overflow-hidden transition-all hover:-translate-y-0.5 hover:border-primary/40 hover:shadow-lg">
+        <div
+          className="pointer-events-none absolute inset-x-0 top-0 h-px bg-brand-gradient opacity-0 transition-opacity group-hover:opacity-100"
+        />
         <div className="flex items-center gap-4 p-4">
           <span className="flex size-11 shrink-0 items-center justify-center rounded-xl bg-brand-gradient text-base font-semibold text-white shadow-sm">
             {initials || <Phone className="size-5" />}
@@ -31,7 +34,7 @@ export function NumberCard({ number }: { number: WhatsAppNumber }) {
               <span className="font-mono text-xs">{number.instance_name}</span>
             </p>
           </div>
-          <ChevronRight className="size-4 text-muted-foreground transition-transform group-hover:translate-x-0.5" />
+          <ChevronRight className="size-4 text-muted-foreground transition-all group-hover:translate-x-0.5 group-hover:text-primary" />
         </div>
       </Card>
     </Link>

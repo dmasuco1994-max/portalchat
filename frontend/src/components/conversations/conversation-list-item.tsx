@@ -34,9 +34,10 @@ export function ConversationListItem({ numberId, conversation }: Props) {
   return (
     <Link
       href={`/numbers/${numberId}/conversations/${conversation.id}`}
-      className="block"
+      className="block accent-conversations"
     >
-      <Card className="group flex items-center gap-3 p-3 transition-all hover:border-primary/40 hover:shadow-sm">
+      <Card className="group relative flex items-center gap-3 overflow-hidden p-3 transition-all hover:-translate-y-0.5 hover:border-section hover:shadow-md">
+        <div className="pointer-events-none absolute inset-y-0 left-0 w-0.5 bg-section-strong opacity-0 transition-opacity group-hover:opacity-100" />
         <ContactAvatar
           name={name}
           pictureUrl={conversation.profile_picture_url}
@@ -55,7 +56,7 @@ export function ConversationListItem({ numberId, conversation }: Props) {
               : conversation.remote_jid}
           </p>
         </div>
-        <ChevronRight className="size-4 text-muted-foreground transition-transform group-hover:translate-x-0.5" />
+        <ChevronRight className="size-4 text-muted-foreground transition-all group-hover:translate-x-0.5 group-hover:text-section" />
       </Card>
     </Link>
   );

@@ -3,99 +3,131 @@
 
 @custom-variant dark (&:is(.dark *));
 
-/* Brand: deep teal primary + emerald accent for status / success.
-   Tuned for a B2B comms tool — sober, modern, distinctly NOT WhatsApp green. */
+/* Brand: deep teal primary + emerald accent, with per-section accents
+   (teal, indigo, purple, amber) used by the sidebar + page headers to give
+   each surface a distinct visual identity without screaming. */
 :root {
   --radius: 0.75rem;
 
-  --background: oklch(0.99 0.003 180);
-  --foreground: oklch(0.18 0.02 200);
+  /* Slightly warm off-white app background — feels less clinical than pure
+     white but still reads as a light theme. */
+  --background: oklch(0.99 0.005 100);
+  --foreground: oklch(0.17 0.02 220);
 
   --card: oklch(1 0 0);
-  --card-foreground: oklch(0.18 0.02 200);
+  --card-foreground: oklch(0.17 0.02 220);
 
   --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.18 0.02 200);
+  --popover-foreground: oklch(0.17 0.02 220);
 
-  --primary: oklch(0.48 0.10 190);
-  --primary-foreground: oklch(0.99 0.003 180);
+  /* Primary now has more punch — same hue, more chroma. */
+  --primary: oklch(0.52 0.13 190);
+  --primary-foreground: oklch(0.99 0.005 100);
 
-  --secondary: oklch(0.96 0.01 190);
-  --secondary-foreground: oklch(0.30 0.04 200);
+  --secondary: oklch(0.96 0.015 200);
+  --secondary-foreground: oklch(0.30 0.05 200);
 
-  --muted: oklch(0.96 0.005 200);
-  --muted-foreground: oklch(0.50 0.02 200);
+  --muted: oklch(0.96 0.008 210);
+  --muted-foreground: oklch(0.48 0.025 215);
 
-  --accent: oklch(0.94 0.04 175);
+  --accent: oklch(0.94 0.045 180);
   --accent-foreground: oklch(0.30 0.08 190);
 
-  --success: oklch(0.68 0.16 150);
+  --success: oklch(0.66 0.18 150);
   --success-foreground: oklch(0.99 0 0);
 
-  --warning: oklch(0.76 0.15 75);
-  --warning-foreground: oklch(0.20 0.02 75);
+  --warning: oklch(0.78 0.16 75);
+  --warning-foreground: oklch(0.22 0.04 75);
 
-  --destructive: oklch(0.60 0.22 25);
+  --destructive: oklch(0.60 0.23 25);
   --destructive-foreground: oklch(0.99 0 0);
 
-  --border: oklch(0.92 0.005 200);
-  --input: oklch(0.92 0.005 200);
-  --ring: oklch(0.55 0.12 185);
+  --border: oklch(0.91 0.008 210);
+  --input: oklch(0.91 0.008 210);
+  --ring: oklch(0.55 0.13 190);
 
-  --sidebar: oklch(0.985 0.005 200);
-  --sidebar-foreground: oklch(0.25 0.02 200);
-  --sidebar-border: oklch(0.92 0.005 200);
-  --sidebar-accent: oklch(0.94 0.04 175);
-  --sidebar-accent-foreground: oklch(0.30 0.08 190);
+  /* Sidebar reads cooler than the main canvas so the eye separates the two
+     zones at a glance, even at the lightness scale this theme runs at. */
+  --sidebar: oklch(0.975 0.012 210);
+  --sidebar-foreground: oklch(0.23 0.03 215);
+  --sidebar-border: oklch(0.91 0.01 215);
+  --sidebar-accent: oklch(0.93 0.05 180);
+  --sidebar-accent-foreground: oklch(0.30 0.10 190);
+
+  /* Section accents — used by the sidebar items and page-header underlines.
+     Each section gets a distinct hue with consistent lightness so they read
+     as siblings, not noise. */
+  --accent-numbers: oklch(0.58 0.15 200);
+  --accent-conversations: oklch(0.60 0.18 250);
+  --accent-team: oklch(0.62 0.19 305);
+  --accent-settings: oklch(0.68 0.16 60);
 
   --brand-gradient: linear-gradient(
     135deg,
-    oklch(0.48 0.10 190) 0%,
-    oklch(0.55 0.13 175) 35%,
-    oklch(0.65 0.17 155) 100%
+    oklch(0.50 0.13 200) 0%,
+    oklch(0.58 0.15 175) 35%,
+    oklch(0.66 0.18 150) 100%
+  );
+
+  /* Subtle dotted texture on the app canvas — adds depth without distracting. */
+  --canvas-pattern: radial-gradient(
+    circle at 1px 1px,
+    oklch(0.85 0.02 210 / 35%) 1px,
+    transparent 0
   );
 }
 
 .dark {
-  --background: oklch(0.14 0.015 200);
+  --background: oklch(0.14 0.02 215);
   --foreground: oklch(0.96 0.005 180);
 
-  --card: oklch(0.19 0.015 200);
+  --card: oklch(0.19 0.02 215);
   --card-foreground: oklch(0.96 0.005 180);
 
-  --popover: oklch(0.19 0.015 200);
+  --popover: oklch(0.19 0.02 215);
   --popover-foreground: oklch(0.96 0.005 180);
 
-  --primary: oklch(0.72 0.13 175);
-  --primary-foreground: oklch(0.14 0.015 200);
+  --primary: oklch(0.75 0.13 175);
+  --primary-foreground: oklch(0.14 0.02 215);
 
-  --secondary: oklch(0.27 0.02 200);
+  --secondary: oklch(0.26 0.025 215);
   --secondary-foreground: oklch(0.96 0.005 180);
 
-  --muted: oklch(0.24 0.015 200);
-  --muted-foreground: oklch(0.66 0.015 200);
+  --muted: oklch(0.24 0.02 215);
+  --muted-foreground: oklch(0.68 0.02 210);
 
-  --accent: oklch(0.30 0.06 185);
-  --accent-foreground: oklch(0.90 0.05 175);
+  --accent: oklch(0.30 0.07 185);
+  --accent-foreground: oklch(0.92 0.05 175);
 
-  --success: oklch(0.72 0.16 150);
+  --success: oklch(0.74 0.17 150);
   --success-foreground: oklch(0.10 0.02 150);
 
-  --warning: oklch(0.78 0.15 75);
+  --warning: oklch(0.80 0.16 75);
   --warning-foreground: oklch(0.18 0.04 75);
 
-  --destructive: oklch(0.68 0.20 25);
+  --destructive: oklch(0.70 0.21 25);
   --destructive-foreground: oklch(0.99 0 0);
 
   --border: oklch(1 0 0 / 10%);
   --input: oklch(1 0 0 / 14%);
-  --ring: oklch(0.55 0.12 180);
+  --ring: oklch(0.55 0.13 180);
 
-  --sidebar: oklch(0.16 0.015 200);
+  --sidebar: oklch(0.16 0.02 215);
   --sidebar-foreground: oklch(0.93 0.005 180);
   --sidebar-border: oklch(1 0 0 / 8%);
-  --sidebar-accent: oklch(0.30 0.06 185);
-  --sidebar-accent-foreground: oklch(0.90 0.05 175);
+  --sidebar-accent: oklch(0.30 0.07 185);
+  --sidebar-accent-foreground: oklch(0.92 0.05 175);
+
+  --accent-numbers: oklch(0.72 0.16 200);
+  --accent-conversations: oklch(0.72 0.18 250);
+  --accent-team: oklch(0.72 0.18 305);
+  --accent-settings: oklch(0.78 0.16 60);
+
+  --canvas-pattern: radial-gradient(
+    circle at 1px 1px,
+    oklch(1 0 0 / 5%) 1px,
+    transparent 0
+  );
 }
 
 @theme inline {
@@ -130,6 +162,10 @@
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-accent: var(--sidebar-accent);
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-accent-numbers: var(--accent-numbers);
+  --color-accent-conversations: var(--accent-conversations);
+  --color-accent-team: var(--accent-team);
+  --color-accent-settings: var(--accent-settings);
 }
 
 @layer base {
@@ -142,6 +178,8 @@
   }
   body {
     @apply bg-background text-foreground;
+    background-image: var(--canvas-pattern);
+    background-size: 22px 22px;
     font-feature-settings: "rlig" 1, "calt" 1, "ss01" 1;
   }
   h1, h2, h3, h4 {
@@ -162,11 +200,39 @@
   .ring-glow {
     box-shadow: 0 0 0 4px color-mix(in oklch, var(--ring) 18%, transparent);
   }
+
+  /* Per-section utility classes: text + background tints derived from the
+     section accent var, so a sidebar item or icon chip can wear its section's
+     color without hardcoding hex values. */
+  .accent-numbers       { --section: var(--accent-numbers); }
+  .accent-conversations { --section: var(--accent-conversations); }
+  .accent-team          { --section: var(--accent-team); }
+  .accent-settings      { --section: var(--accent-settings); }
+  .text-section         { color: var(--section, currentColor); }
+  .bg-section-soft {
+    background-color: color-mix(in oklch, var(--section, var(--primary)) 14%, transparent);
+  }
+  .bg-section-strong {
+    background-color: var(--section, var(--primary));
+    color: white;
+  }
+  .border-section {
+    border-color: color-mix(in oklch, var(--section, var(--primary)) 50%, transparent);
+  }
+
   @keyframes pulse-dot {
     0%, 100% { transform: scale(1); opacity: 1; }
     50% { transform: scale(1.35); opacity: 0.55; }
   }
   .pulse-dot {
     animation: pulse-dot 1.8s ease-in-out infinite;
+  }
+
+  /* Soft inner card highlight — barely-there top edge that catches the eye
+     and makes flat cards feel more dimensional. */
+  .card-sheen {
+    background-image:
+      linear-gradient(180deg, oklch(1 0 0 / 4%) 0%, transparent 8%),
+      linear-gradient(0deg, var(--card), var(--card));
   }
 }

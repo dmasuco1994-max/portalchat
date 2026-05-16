@@ -107,7 +107,11 @@ export default function SettingsPage() {
 
   return (
     <div className="space-y-6">
-      <PageHeader title="Ajustes" description="Tu perfil y accesos." />
+      <PageHeader
+        title="Ajustes"
+        description="Tu perfil y accesos."
+        accentClass="accent-settings"
+      />
 
       <Form {...profileForm}>
         <form onSubmit={profileForm.handleSubmit(onSaveProfile)}>

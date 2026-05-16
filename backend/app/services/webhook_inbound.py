@@ -131,28 +131,8 @@ async def handle_evolution_event(
 
     # Enqueue async CRM delivery (Phase 5 — durable, retried).
     if webhook_active and webhook_url and webhook_secret:
-        should_deliver = not webhook_events or event in [
-            e.upper() for e in webhook_events
-        ]
         if webhook_format == "apiwha_neotel":
-            # apiwha emulation only forwards inbound text-style messages. Outbound
-            # echoes (fromMe) and non-message events would confuse Neotel's parser.
-            key = (data.get("key") or {}) if isinstance(data, dict) else {}
-            should_deliver = (
-                event == "MESSAGES_UPSERT" and not bool(key.get("fromMe"))
-            )
-        elif webhook_format == "neotel_custom":
-            # Custom Provider only cares about inbound messages and status updates.
-            key = (data.get("key") or {}) if isinstance(data, dict) else {}
-            if event == "MESSAGES_UPSERT":
-                should_deliver = not bool(key.get("fromMe"))
-            elif event == "MESSAGES_UPDATE":
-                should_deliver = True
-            else:
-                should_deliver = False
-
-        if should_deliver and webhook_format == "neotel_custom":
-            await _dispatch_neotel_custom(
+            await _dispatch_apiwha(
                 db=db,
                 arq_pool=arq_pool,
                 organization_id=organization_id,
@@ -162,16 +142,39 @@ async def handle_evolution_event(
                 payload=payload,
                 webhook_url=webhook_url,
                 webhook_secret=webhook_secret,
-                webhook_extra=webhook_extra,
                 our_phone_number=our_phone_number,
                 upsert_result=summary.get("message"),
             )
             return summary
 
+        if webhook_format == "neotel_custom":
+            key = (data.get("key") or {}) if isinstance(data, dict) else {}
+            should_deliver = (
+                (event == "MESSAGES_UPSERT" and not bool(key.get("fromMe")))
+                or event == "MESSAGES_UPDATE"
+            )
+            if should_deliver:
+                await _dispatch_neotel_custom(
+                    db=db,
+                    arq_pool=arq_pool,
+                    organization_id=organization_id,
+                    number_id=number_id,
+                    instance_name=instance_name,
+                    event=event,
+                    payload=payload,
+                    webhook_url=webhook_url,
+                    webhook_secret=webhook_secret,
+                    webhook_extra=webhook_extra,
+                    our_phone_number=our_phone_number,
+                    upsert_result=summary.get("message"),
+                )
+            return summary
+
+        # Portal format (default): the user-configurable event filter applies.
+        should_deliver = not webhook_events or event in [
+            e.upper() for e in webhook_events
+        ]
         if should_deliver:
-            apikey_token = webhook_extra.get("token") if isinstance(
-                webhook_extra.get("token"), str
-            ) else None
             delivery = await enqueue_delivery(
                 db,
                 arq_pool,
@@ -183,13 +186,89 @@ async def handle_evolution_event(
                 instance_name=instance_name,
                 raw_event_payload=payload,
                 format=webhook_format,
-                our_phone_number=our_phone_number,
-                apikey=apikey_token,
             )
             summary["crm_delivery_id"] = str(delivery.id)
             summary["crm_delivery_status"] = delivery.status
 
     return summary
+
+
+async def _dispatch_apiwha(
+    *,
+    db: AsyncSession,
+    arq_pool,
+    organization_id,
+    number_id,
+    instance_name: str,
+    event: str,
+    payload: dict[str, Any],
+    webhook_url: str,
+    webhook_secret: str,
+    our_phone_number: str | None,
+    upsert_result: dict[str, Any] | None,
+) -> None:
+    """Build rapiwha-compatible INBOX / MESSAGEPROCESSED / MESSAGEFAILED event
+    and enqueue. Body is wrapped as `data=<json>` at dispatch time.
+
+    Event mapping (Evolution → rapiwha):
+      - MESSAGES_UPSERT inbound (not fromMe)     → INBOX
+      - SEND_MESSAGE                              → MESSAGEPROCESSED
+      - MESSAGES_UPDATE with error/failed status  → MESSAGEFAILED
+      - everything else                           → skipped
+    """
+    from app.services.webhook_outbound import (
+        build_apiwha_failed_event,
+        build_apiwha_inbox_event,
+        build_apiwha_processed_event,
+        enqueue_delivery,
+    )
+
+    key = (payload.get("data") or {}).get("key") or {}
+    from_me = bool(key.get("fromMe"))
+
+    if event == "MESSAGES_UPSERT" and not from_me:
+        prebuilt = build_apiwha_inbox_event(
+            our_phone_number=our_phone_number,
+            raw_event=payload,
+            remote_name=(upsert_result or {}).get("remote_name"),
+        )
+    elif event == "SEND_MESSAGE":
+        prebuilt = build_apiwha_processed_event(
+            our_phone_number=our_phone_number,
+            raw_event=payload,
+        )
+    elif event == "MESSAGES_UPDATE":
+        status_value = ((payload.get("data") or {}).get("status") or "").upper()
+        if status_value in ("ERROR", "FAILED", "FAIL"):
+            prebuilt = build_apiwha_failed_event(
+                our_phone_number=our_phone_number,
+                raw_event=payload,
+            )
+        else:
+            # apiwha doesn't have a "delivered/read" event in its webhook spec.
+            return
+    else:
+        return
+
+    delivery = await enqueue_delivery(
+        db,
+        arq_pool,
+        organization_id=organization_id,
+        whatsapp_number_id=number_id,
+        target_url=webhook_url,
+        secret=webhook_secret,
+        event_type=event,
+        instance_name=instance_name,
+        raw_event_payload=payload,
+        format="apiwha_neotel",
+        prebuilt_payload=prebuilt,
+    )
+    logger.info(
+        "apiwha delivery enqueued: %s for event %s (rapiwha=%s)",
+        delivery.id,
+        event,
+        prebuilt.get("event"),
+    )
 
 
 async def _dispatch_neotel_custom(

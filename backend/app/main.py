@@ -5,6 +5,7 @@ from arq.connections import RedisSettings, create_pool
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.api.apiwha_compat import router as apiwha_compat_router
 from app.api.v1.router import api_router
 from app.core.config import settings
 from app.core.logging import configure_logging
@@ -41,6 +42,10 @@ app.add_middleware(
 )
 
 app.include_router(api_router, prefix="/api/v1")
+# rapiwha-compat endpoints live at the root so a CRM with the apiwha host
+# hardcoded can swap panel.rapiwha.com → this backend's host with no path
+# changes.
+app.include_router(apiwha_compat_router)
 
 
 @app.get("/")

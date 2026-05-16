@@ -77,6 +77,12 @@ function buildCallbackUrl(accountId: string, token: string): string {
   )}/send?token=${encodeURIComponent(token)}`;
 }
 
+function buildSendEndpointUrl(): string {
+  // Strip /api/v1 — the apiwha-compat endpoint lives at the root.
+  const base = API_BASE.replace(/\/api\/v1\/?$/, "");
+  return `${base}/send_message.php`;
+}
+
 export function WebhookForm({ number }: { number: WhatsAppNumber }) {
   const update = useUpdateWebhookConfig(number.id);
   const [secret, setSecret] = React.useState<string | null>(null);
@@ -310,6 +316,22 @@ export function WebhookForm({ number }: { number: WhatsAppNumber }) {
                         Number not paired yet — pair the QR first
                       </span>
                     )}
+                  </p>
+                  <p className="mt-3 font-medium">Send endpoint URL</p>
+                  <p className="mt-1 text-muted-foreground">
+                    For full bidirectional support, ask your Neotel focal
+                    point to override the apiwha base host in the
+                    SocialMedia <code>.config</code> to:
+                  </p>
+                  <p className="mt-1 break-all font-mono">
+                    {buildSendEndpointUrl()}
+                  </p>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    Then Neotel&apos;s agent replies POST to{" "}
+                    <code>/send_message.php</code> here instead of{" "}
+                    <code>panel.apiwha.com/send_message.php</code>.
+                    Authentication is by the same Token (apikey) already
+                    saved.
                   </p>
                 </div>
               </>

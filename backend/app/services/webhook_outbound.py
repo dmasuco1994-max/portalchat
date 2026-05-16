@@ -54,7 +54,16 @@ def _build_envelope(event: str, instance: str, payload: dict[str, Any]) -> dict[
     }
 
 
-# ---- apiwha_neotel adapter -----------------------------------------------
+# ---- apiwha / rapiwha adapter --------------------------------------------
+# Matches the spec at https://panel.rapiwha.com/page_api.php:
+#   POST <url>
+#   Content-Type: application/x-www-form-urlencoded
+#   Body: data=<URL-encoded JSON>
+#
+# Events:
+#   INBOX            — inbound message from a contact
+#   MESSAGEPROCESSED — our number's outbound message was accepted
+#   MESSAGEFAILED    — our number's outbound message was rejected
 def _phone_from_jid(jid: str | None) -> str:
     """Strip the @s.whatsapp.net suffix and any non-digit characters."""
     if not jid:
@@ -63,23 +72,14 @@ def _phone_from_jid(jid: str | None) -> str:
     return "".join(ch for ch in base if ch.isdigit())
 
 
-def build_apiwha_payload(
+def build_apiwha_inbox_event(
     *,
     our_phone_number: str | None,
     raw_event: dict[str, Any],
-    apikey: str | None = None,
+    remote_name: str | None = None,
 ) -> dict[str, Any]:
-    """Translate an Evolution MESSAGES_UPSERT inbound event into the flat
-    apiwha message shape Neotel's CAPIWHA endpoint parses.
-
-    apiwha message fields (from the public Ruby/PHP SDKs):
-      id, number, from, to, type ("IN"/"OUT"), text, creation_date, custom_data
-
-    The optional `apikey` is the Token Neotel generates for the account; some
-    deployments validate it against the incoming webhook body, so we include it
-    as an extra field when configured. Apiwha's send/pull endpoints all carry
-    `apikey` as a form field, so adding it to the webhook is consistent.
-    """
+    """Inbound message → INBOX event payload (the JSON that goes inside the
+    `data` form field)."""
     data = raw_event.get("data") or {}
     key = data.get("key") or {}
     message = data.get("message") or {}
@@ -89,28 +89,50 @@ def build_apiwha_payload(
         or (message.get("extendedTextMessage") or {}).get("text")
         or ""
     )
-    ts = data.get("messageTimestamp") or data.get("messageTimestampMs")
-    if isinstance(ts, (int, float)):
-        # Evolution timestamps are unix seconds (sometimes ms — normalize).
-        if ts > 10_000_000_000:
-            ts = ts / 1000
-        creation = datetime.fromtimestamp(ts, tz=timezone.utc)
-    else:
-        creation = datetime.now(timezone.utc)
-
-    body: dict[str, Any] = {
-        "id": str(key.get("id") or ""),
-        "number": remote_phone,
+    push_name = data.get("pushName") or remote_name or ""
+    return {
+        "event": "INBOX",
         "from": remote_phone,
         "to": our_phone_number or "",
-        "type": "IN",
         "text": text,
-        "creation_date": creation.strftime("%Y-%m-%d %H:%M:%S"),
-        "custom_data": data.get("pushName") or "",
+        "pushname": push_name,
+        # `alias` and `profilepicture` are rapiwha extras that need the contact
+        # book on the device. We don't have either reliably, so we omit them.
     }
-    if apikey:
-        body["apikey"] = apikey
-    return body
+
+
+def build_apiwha_processed_event(
+    *,
+    our_phone_number: str | None,
+    raw_event: dict[str, Any],
+    custom_data: str | None = None,
+) -> dict[str, Any]:
+    """Outbound message accepted → MESSAGEPROCESSED event."""
+    data = raw_event.get("data") or {}
+    key = data.get("key") or {}
+    return {
+        "event": "MESSAGEPROCESSED",
+        "from": our_phone_number or "",
+        "to": _phone_from_jid(key.get("remoteJid")),
+        "custom_data": custom_data or "",
+    }
+
+
+def build_apiwha_failed_event(
+    *,
+    our_phone_number: str | None,
+    raw_event: dict[str, Any],
+    custom_data: str | None = None,
+) -> dict[str, Any]:
+    """Outbound message rejected → MESSAGEFAILED event."""
+    data = raw_event.get("data") or {}
+    key = data.get("key") or {}
+    return {
+        "event": "MESSAGEFAILED",
+        "from": our_phone_number or "",
+        "to": _phone_from_jid(key.get("remoteJid")),
+        "custom_data": custom_data or "",
+    }
 
 
 # ---- neotel_custom adapter -----------------------------------------------
@@ -239,25 +261,18 @@ async def enqueue_delivery(
     raw_event_payload: dict[str, Any],
     max_attempts: int = 5,
     format: str = "portal",
-    our_phone_number: str | None = None,
-    apikey: str | None = None,
     prebuilt_payload: dict[str, Any] | None = None,
 ) -> WebhookDelivery:
     """Persist a delivery row and dispatch an arq job for it.
 
     The body stored in `payload` depends on `format`:
       - portal → our envelope (UUID + event + raw payload)
-      - apiwha_neotel → flat apiwha shape ready to URL-encode at dispatch time
+      - apiwha_neotel → caller pre-builds an event dict (INBOX / MESSAGEPROCESSED
+        / MESSAGEFAILED). At dispatch time it's wrapped as `data=<json>` form.
       - neotel_custom → caller pre-builds the JSON via `prebuilt_payload`
     """
     if prebuilt_payload is not None:
         snapshot = prebuilt_payload
-    elif format == "apiwha_neotel":
-        snapshot = build_apiwha_payload(
-            our_phone_number=our_phone_number,
-            raw_event=raw_event_payload,
-            apikey=apikey,
-        )
     else:
         snapshot = _build_envelope(event_type, instance_name, raw_event_payload)
 
@@ -318,8 +333,10 @@ async def process_webhook_delivery(ctx: dict, delivery_id: str) -> dict[str, Any
         attempt_n = row.attempts
 
         if row.format == "apiwha_neotel":
+            # rapiwha spec: POST form-encoded with a SINGLE `data` field whose
+            # value is the JSON-encoded event. Receivers read $_POST["data"].
             body_bytes = urlencode(
-                {k: ("" if v is None else str(v)) for k, v in row.payload.items()}
+                {"data": json.dumps(row.payload, separators=(",", ":"))}
             ).encode("utf-8")
             headers = {
                 "Content-Type": "application/x-www-form-urlencoded",

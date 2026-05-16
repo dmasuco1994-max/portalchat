@@ -127,10 +127,38 @@ services:
     networks:
       - portal_net
 
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: portal_frontend
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      # Server-side URL the Next route handlers use to talk to the backend
+      # (resolves inside the docker network).
+      BACKEND_INTERNAL_URL: http://backend:8000/api/v1
+      # Public-facing URL the browser uses to call the backend directly
+      # (CORS is configured for http://localhost:3000 on the backend).
+      NEXT_PUBLIC_API_BASE_URL: http://localhost:8000/api/v1
+      NEXT_PUBLIC_APP_URL: http://localhost:3000
+      NODE_ENV: development
+    volumes:
+      - ./frontend:/app
+      - frontend_node_modules:/app/node_modules
+      - frontend_next:/app/.next
+    depends_on:
+      - backend
+    networks:
+      - portal_net
+
 volumes:
   postgres_data:
   redis_data:
   evolution_instances:
+  frontend_node_modules:
+  frontend_next:
 
 networks:
   portal_net:

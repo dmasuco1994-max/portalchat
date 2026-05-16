@@ -326,18 +326,30 @@ async def update_webhook_config(
         number.webhook_events = None
         number.webhook_active = False
         number.webhook_secret = None
+        number.webhook_format = "portal"
+        number.webhook_extra = None
         await db.commit()
         await db.refresh(number)
         return number, None
 
+    # apiwha_neotel doesn't sign with our HMAC, but we still need *something*
+    # in webhook_secret because the inbound handler gates on its truthiness.
+    # Use a sentinel so future rotates still work the same way.
     new_secret_plain: str | None = None
-    if number.webhook_secret is None or payload.rotate_secret:
-        new_secret_plain = secrets.token_urlsafe(32)
-        number.webhook_secret = new_secret_plain
+    if payload.format == "apiwha_neotel":
+        if number.webhook_secret is None or payload.rotate_secret:
+            # Generate a placeholder; not shown to user, not used for signing.
+            number.webhook_secret = secrets.token_urlsafe(16)
+    else:
+        if number.webhook_secret is None or payload.rotate_secret:
+            new_secret_plain = secrets.token_urlsafe(32)
+            number.webhook_secret = new_secret_plain
 
     number.webhook_url = str(payload.url)
     number.webhook_events = payload.events
     number.webhook_active = payload.active
+    number.webhook_format = payload.format
+    number.webhook_extra = payload.extra
 
     await db.commit()
     await db.refresh(number)

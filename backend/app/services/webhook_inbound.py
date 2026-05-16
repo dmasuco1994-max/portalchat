@@ -112,6 +112,8 @@ async def handle_evolution_event(
     webhook_url = number.webhook_url
     webhook_secret = number.webhook_secret
     webhook_events = list(number.webhook_events or [])
+    webhook_format = number.webhook_format
+    our_phone_number = number.phone_number
     instance_name = number.instance_name
     organization_id = number.organization_id
     number_id = number.id
@@ -128,7 +130,18 @@ async def handle_evolution_event(
 
     # Enqueue async CRM delivery (Phase 5 — durable, retried).
     if webhook_active and webhook_url and webhook_secret:
-        if not webhook_events or event in [e.upper() for e in webhook_events]:
+        should_deliver = not webhook_events or event in [
+            e.upper() for e in webhook_events
+        ]
+        if webhook_format == "apiwha_neotel":
+            # apiwha emulation only forwards inbound text-style messages. Outbound
+            # echoes (fromMe) and non-message events would confuse Neotel's parser.
+            key = (data.get("key") or {}) if isinstance(data, dict) else {}
+            should_deliver = (
+                event == "MESSAGES_UPSERT" and not bool(key.get("fromMe"))
+            )
+
+        if should_deliver:
             delivery = await enqueue_delivery(
                 db,
                 arq_pool,
@@ -139,6 +152,8 @@ async def handle_evolution_event(
                 event_type=event,
                 instance_name=instance_name,
                 raw_event_payload=payload,
+                format=webhook_format,
+                our_phone_number=our_phone_number,
             )
             summary["crm_delivery_id"] = str(delivery.id)
             summary["crm_delivery_status"] = delivery.status

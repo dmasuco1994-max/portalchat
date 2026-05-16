@@ -23,6 +23,7 @@ from app.models.mixins import TimestampMixin, UUIDPkMixin
 #   disconnected — was connected, lost session (network, logout, etc.)
 #   failed       — Evolution returned an error during create/connect
 VALID_STATUSES = ("created", "connecting", "connected", "disconnected", "failed")
+VALID_WEBHOOK_FORMATS = ("portal", "apiwha_neotel")
 
 
 class WhatsAppNumber(UUIDPkMixin, TimestampMixin, Base):
@@ -31,6 +32,10 @@ class WhatsAppNumber(UUIDPkMixin, TimestampMixin, Base):
         CheckConstraint(
             f"status IN {VALID_STATUSES}",
             name="ck_whatsapp_numbers_status",
+        ),
+        CheckConstraint(
+            f"webhook_format IN {VALID_WEBHOOK_FORMATS}",
+            name="ck_whatsapp_numbers_webhook_format",
         ),
     )
 
@@ -60,5 +65,15 @@ class WhatsAppNumber(UUIDPkMixin, TimestampMixin, Base):
     webhook_active: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=False
     )
+
+    # Delivery format. `portal` = our native JSON envelope + HMAC.
+    # `apiwha_neotel` = form-encoded apiwha-compatible POST, no HMAC, for Neotel
+    # CAPIWHA-style integrations.
+    webhook_format: Mapped[str] = mapped_column(
+        String(32), nullable=False, default="portal"
+    )
+    # Per-format auxiliary config (e.g. apiwha_neotel stores `{"token": "..."}`
+    # in case Neotel echoes it back or expects it as a header in some setups).
+    webhook_extra: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
 
     organization: Mapped["Organization"] = relationship()  # noqa: F821

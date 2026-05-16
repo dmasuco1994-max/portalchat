@@ -18,6 +18,8 @@ export type NumberStatus =
   | "disconnected"
   | "failed";
 
+export type WebhookFormat = "portal" | "apiwha_neotel";
+
 export interface WhatsAppNumber {
   id: string;
   organization_id: string;
@@ -29,6 +31,8 @@ export interface WhatsAppNumber {
   webhook_url: string | null;
   webhook_active: boolean;
   webhook_events: string[] | null;
+  webhook_format: WebhookFormat;
+  webhook_extra: Record<string, unknown> | null;
   created_at: string;
   updated_at: string;
 }
@@ -96,6 +100,8 @@ export interface WebhookConfigResponse {
   url: string | null;
   events: string[] | null;
   active: boolean;
+  format: WebhookFormat;
+  extra: Record<string, unknown> | null;
   /** Only present on the response that creates or rotates the secret. */
   secret: string | null;
 }
@@ -106,6 +112,8 @@ export interface WebhookConfigUpdate {
   events?: string[] | null;
   active?: boolean;
   rotate_secret?: boolean;
+  format?: WebhookFormat;
+  extra?: Record<string, unknown> | null;
 }
 
 export type WebhookDeliveryStatus =

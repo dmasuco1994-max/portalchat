@@ -8,6 +8,11 @@ Phase 5 design:
      itself with exponential backoff on failure.
 
 Retry schedule (seconds): 5, 30, 120, 600, 1800. After max_attempts → 'abandoned'.
+
+Phase 8 added `format`:
+  - `portal` — our native JSON envelope + HMAC headers (Phase 5 default).
+  - `apiwha_neotel` — form-encoded POST mimicking the apiwha webhook shape
+    so Neotel's CAPIWHA provider slot can ingest us as if we were apiwha.
 """
 import hashlib
 import hmac
@@ -15,6 +20,7 @@ import json
 import logging
 from datetime import datetime, timedelta, timezone
 from typing import Any
+from urllib.parse import urlencode
 from uuid import UUID, uuid4
 
 import httpx
@@ -48,6 +54,56 @@ def _build_envelope(event: str, instance: str, payload: dict[str, Any]) -> dict[
     }
 
 
+# ---- apiwha_neotel adapter -----------------------------------------------
+def _phone_from_jid(jid: str | None) -> str:
+    """Strip the @s.whatsapp.net suffix and any non-digit characters."""
+    if not jid:
+        return ""
+    base = jid.split("@", 1)[0]
+    return "".join(ch for ch in base if ch.isdigit())
+
+
+def build_apiwha_payload(
+    *,
+    our_phone_number: str | None,
+    raw_event: dict[str, Any],
+) -> dict[str, Any]:
+    """Translate an Evolution MESSAGES_UPSERT inbound event into the flat
+    apiwha message shape Neotel's CAPIWHA endpoint parses.
+
+    apiwha message fields (from the public Ruby/PHP SDKs):
+      id, number, from, to, type ("IN"/"OUT"), text, creation_date, custom_data
+    """
+    data = raw_event.get("data") or {}
+    key = data.get("key") or {}
+    message = data.get("message") or {}
+    remote_phone = _phone_from_jid(key.get("remoteJid"))
+    text = (
+        message.get("conversation")
+        or (message.get("extendedTextMessage") or {}).get("text")
+        or ""
+    )
+    ts = data.get("messageTimestamp") or data.get("messageTimestampMs")
+    if isinstance(ts, (int, float)):
+        # Evolution timestamps are unix seconds (sometimes ms — normalize).
+        if ts > 10_000_000_000:
+            ts = ts / 1000
+        creation = datetime.fromtimestamp(ts, tz=timezone.utc)
+    else:
+        creation = datetime.now(timezone.utc)
+
+    return {
+        "id": str(key.get("id") or ""),
+        "number": remote_phone,
+        "from": remote_phone,
+        "to": our_phone_number or "",
+        "type": "IN",
+        "text": text,
+        "creation_date": creation.strftime("%Y-%m-%d %H:%M:%S"),
+        "custom_data": data.get("pushName") or "",
+    }
+
+
 # ---- Enqueue (called from the inbound webhook handler) -------------------
 async def enqueue_delivery(
     db,
@@ -61,17 +117,31 @@ async def enqueue_delivery(
     instance_name: str,
     raw_event_payload: dict[str, Any],
     max_attempts: int = 5,
+    format: str = "portal",
+    our_phone_number: str | None = None,
 ) -> WebhookDelivery:
-    """Persist a delivery row and dispatch an arq job for it."""
-    envelope = _build_envelope(event_type, instance_name, raw_event_payload)
+    """Persist a delivery row and dispatch an arq job for it.
+
+    The body stored in `payload` depends on `format`:
+      - portal → our envelope (UUID + event + raw payload)
+      - apiwha_neotel → flat apiwha shape ready to URL-encode at dispatch time
+    """
+    if format == "apiwha_neotel":
+        snapshot = build_apiwha_payload(
+            our_phone_number=our_phone_number,
+            raw_event=raw_event_payload,
+        )
+    else:
+        snapshot = _build_envelope(event_type, instance_name, raw_event_payload)
 
     row = WebhookDelivery(
         organization_id=organization_id,
         whatsapp_number_id=whatsapp_number_id,
         target_url=target_url,
         event_type=event_type,
-        payload=envelope,
+        payload=snapshot,
         secret=secret,
+        format=format,
         max_attempts=max_attempts,
         status="pending",
     )
@@ -119,22 +189,34 @@ async def process_webhook_delivery(ctx: dict, delivery_id: str) -> dict[str, Any
         await db.commit()
 
         attempt_n = row.attempts
-        body_bytes = json.dumps(row.payload, separators=(",", ":")).encode("utf-8")
-        signature = _sign(row.secret, body_bytes)
-        delivery_uuid_str = row.payload.get("id", str(row.id))
+
+        if row.format == "apiwha_neotel":
+            body_bytes = urlencode(
+                {k: ("" if v is None else str(v)) for k, v in row.payload.items()}
+            ).encode("utf-8")
+            headers = {
+                "Content-Type": "application/x-www-form-urlencoded",
+                "X-WhatsApp-Portal-Delivery": str(row.id),
+                "X-WhatsApp-Portal-Attempt": str(attempt_n),
+            }
+        else:
+            body_bytes = json.dumps(row.payload, separators=(",", ":")).encode("utf-8")
+            signature = _sign(row.secret, body_bytes)
+            delivery_uuid_str = row.payload.get("id", str(row.id))
+            headers = {
+                "Content-Type": "application/json",
+                "X-WhatsApp-Portal-Signature": f"sha256={signature}",
+                "X-WhatsApp-Portal-Event": row.event_type,
+                "X-WhatsApp-Portal-Delivery": delivery_uuid_str,
+                "X-WhatsApp-Portal-Attempt": str(attempt_n),
+            }
 
         try:
             async with httpx.AsyncClient(timeout=DELIVERY_TIMEOUT_SECONDS) as client:
                 response = await client.post(
                     row.target_url,
                     content=body_bytes,
-                    headers={
-                        "Content-Type": "application/json",
-                        "X-WhatsApp-Portal-Signature": f"sha256={signature}",
-                        "X-WhatsApp-Portal-Event": row.event_type,
-                        "X-WhatsApp-Portal-Delivery": delivery_uuid_str,
-                        "X-WhatsApp-Portal-Attempt": str(attempt_n),
-                    },
+                    headers=headers,
                 )
         except (httpx.HTTPError, httpx.TimeoutException) as exc:
             return await _handle_delivery_failure(

@@ -161,5 +161,7 @@ async def patch_webhook(
         url=number.webhook_url,
         events=number.webhook_events,
         active=number.webhook_active,
+        format=number.webhook_format,
+        extra=number.webhook_extra,
         secret=plain_secret,
     )

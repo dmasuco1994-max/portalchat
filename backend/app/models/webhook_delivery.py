@@ -24,6 +24,7 @@ VALID_STATUSES = (
     "failed",       # last attempt failed but retries remain
     "abandoned",    # exhausted max_attempts; manual intervention needed
 )
+VALID_FORMATS = ("portal", "apiwha_neotel")
 
 
 class WebhookDelivery(UUIDPkMixin, TimestampMixin, Base):
@@ -32,6 +33,10 @@ class WebhookDelivery(UUIDPkMixin, TimestampMixin, Base):
         CheckConstraint(
             f"status IN {VALID_STATUSES}",
             name="ck_webhook_deliveries_status",
+        ),
+        CheckConstraint(
+            f"format IN {VALID_FORMATS}",
+            name="ck_webhook_deliveries_format",
         ),
     )
 
@@ -54,6 +59,11 @@ class WebhookDelivery(UUIDPkMixin, TimestampMixin, Base):
     event_type: Mapped[str] = mapped_column(String(80), nullable=False, index=True)
     payload: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
     secret: Mapped[str] = mapped_column(String(128), nullable=False)
+    # Wire format for this delivery. Snapshotted at enqueue time so format
+    # changes on the number don't affect already-queued deliveries.
+    format: Mapped[str] = mapped_column(
+        String(32), nullable=False, default="portal"
+    )
 
     attempts: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     max_attempts: Mapped[int] = mapped_column(Integer, nullable=False, default=5)

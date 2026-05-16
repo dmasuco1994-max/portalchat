@@ -1,12 +1,13 @@
 """WhatsApp number schemas."""
 from datetime import datetime
-from typing import Literal
+from typing import Any, Literal
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, HttpUrl
 
 
 Status = Literal["created", "connecting", "connected", "disconnected", "failed"]
+WebhookFormat = Literal["portal", "apiwha_neotel"]
 
 
 class WhatsAppNumberCreate(BaseModel):
@@ -26,6 +27,8 @@ class WhatsAppNumberRead(BaseModel):
     webhook_url: str | None
     webhook_active: bool
     webhook_events: list[str] | None
+    webhook_format: WebhookFormat
+    webhook_extra: dict[str, Any] | None
     created_at: datetime
     updated_at: datetime
 
@@ -65,6 +68,21 @@ class WebhookConfigUpdate(BaseModel):
         default=False,
         description="If true, generate a new HMAC secret (invalidates any existing one).",
     )
+    format: WebhookFormat = Field(
+        default="portal",
+        description=(
+            "Wire format: `portal` (our native JSON + HMAC) or `apiwha_neotel` "
+            "(form-encoded apiwha-compatible POST for Neotel CAPIWHA)."
+        ),
+    )
+    extra: dict[str, Any] | None = Field(
+        default=None,
+        description=(
+            "Per-format auxiliary config. For apiwha_neotel: "
+            "`{\"token\": \"...\"}` (Neotel's per-account token, if your "
+            "deployment requires it)."
+        ),
+    )
 
 
 class WebhookConfigResponse(BaseModel):
@@ -74,6 +92,8 @@ class WebhookConfigResponse(BaseModel):
     url: str | None
     events: list[str] | None
     active: bool
+    format: WebhookFormat = "portal"
+    extra: dict[str, Any] | None = None
     secret: str | None = Field(
         default=None,
         description="HMAC secret. ONLY returned on the response that creates/rotates it.",

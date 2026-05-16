@@ -474,6 +474,32 @@ async def _handle_delivery_failure(
             row.attempts,
             error_message,
         )
+        # Telegram alert if configured. Best-effort, off the critical path.
+        try:
+            from app.models.whatsapp_number import WhatsAppNumber
+            from app.services.notifications import (
+                fire_and_forget,
+                notify_webhook_abandoned,
+            )
+
+            number = await db.get(WhatsAppNumber, row.whatsapp_number_id)
+            if number is not None:
+                fire_and_forget(
+                    notify_webhook_abandoned(
+                        row.organization_id,
+                        number_name=number.name,
+                        target_url=row.target_url,
+                        event_type=row.event_type,
+                        attempts=row.attempts,
+                        error=error_message,
+                    )
+                )
+        except Exception as exc:  # noqa: BLE001 — never break the worker
+            logger.warning(
+                "Could not schedule abandoned-delivery alert for %s: %s",
+                row.id,
+                exc,
+            )
         return {"status": "abandoned", "attempts": row.attempts}
 
     delay = RETRY_DELAYS_SECONDS[

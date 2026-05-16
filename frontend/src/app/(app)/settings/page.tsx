@@ -9,6 +9,8 @@ import { Key, Save, User as UserIcon } from "lucide-react";
 
 import { useAuth } from "@/components/providers/auth-provider";
 import { PageHeader } from "@/components/app/page-header";
+import { NotificationsCard } from "@/components/settings/notifications-card";
+import { WorkspaceCard } from "@/components/settings/workspace-card";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -178,6 +180,10 @@ export default function SettingsPage() {
           </Card>
         </form>
       </Form>
+
+      <WorkspaceCard />
+
+      <NotificationsCard />
 
       <Form {...passwordForm}>
         <form onSubmit={passwordForm.handleSubmit(onChangePassword)}>

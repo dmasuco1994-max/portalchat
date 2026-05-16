@@ -680,12 +680,27 @@ async def _handle_connection_update(
     raw_state = data.get("state") or data.get("connection")
     new_status = map_state_to_status(raw_state)
     changed = False
+    previous_status = number.status
 
     if new_status != number.status:
         number.status = new_status
         changed = True
         if new_status == "connected":
             number.last_connected_at = datetime.now(timezone.utc)
+        elif new_status == "disconnected" and previous_status == "connected":
+            # Fire Telegram alert (best-effort, off the critical path).
+            from app.services.notifications import (
+                fire_and_forget,
+                notify_number_disconnected,
+            )
+
+            fire_and_forget(
+                notify_number_disconnected(
+                    number.organization_id,
+                    number_name=number.name,
+                    phone=number.phone_number,
+                )
+            )
 
     # Try every JID-shaped field Evolution might send. Different Evolution
     # versions and event flavours expose the owner under different keys.

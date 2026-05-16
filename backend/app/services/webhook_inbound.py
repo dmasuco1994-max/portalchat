@@ -9,6 +9,7 @@ Responsibilities:
 Sync delivery to CRM is intentional for Phase 4 — Phase 5 will introduce an
 async queue with retries and HMAC-signed deliveries.
 """
+import logging
 from datetime import datetime, timezone
 from typing import Any
 
@@ -20,6 +21,9 @@ from app.models.message import Message
 from app.models.whatsapp_number import WhatsAppNumber
 from app.services.evolution import map_state_to_status
 from app.services.webhook_outbound import enqueue_delivery
+
+
+logger = logging.getLogger(__name__)
 
 
 # ---- helpers --------------------------------------------------------------

@@ -7,7 +7,9 @@ from pydantic import BaseModel, ConfigDict, Field, HttpUrl
 
 
 Status = Literal["created", "connecting", "connected", "disconnected", "failed"]
-WebhookFormat = Literal["portal", "apiwha_neotel", "neotel_custom"]
+WebhookFormat = Literal[
+    "portal", "apiwha_neotel", "neotel_custom", "external_neotel"
+]
 
 
 class WhatsAppNumberCreate(BaseModel):

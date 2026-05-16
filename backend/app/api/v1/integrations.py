@@ -126,3 +126,111 @@ async def neotel_send(
         return _err(500, f"Unexpected error: {type(exc).__name__}: {exc}")
 
     return _ok(payload.id)
+
+
+# ---- Neotel External Application callback --------------------------------
+# Spec: https://neotel-us.atlassian.net/wiki/spaces/NEOT/pages/6358021
+# When an agent in Neotel sends a message to a contact, Neotel POSTs the
+# Message Entity to this endpoint (the one the user pasted into Neotel's
+# `Webhook URL` field of the "Aplicación Externa" config).
+class NeotelExternalMessage(BaseModel):
+    id: str | None = None
+    creationTime: str | None = None
+    text: str | None = None
+    contactId: str
+    contactName: str | None = None
+    contactLastName: str | None = None
+    contactEmail: str | None = None
+    contactImgProfile: str | None = None
+    observations: str | None = None
+    crm: int | None = None
+    crmId: str | None = None
+    externalId: str | None = None
+    isInbound: bool | int | None = None
+    accountId: str
+    attachment: dict[str, Any] | None = None
+
+
+@router.post(
+    "/external/{application_id}/inbox",
+    summary=(
+        "Neotel External Application callback. Receives the Message Entity "
+        "when an agent sends a reply from Neotel, dispatches it via Evolution."
+    ),
+)
+async def neotel_external_inbox(
+    application_id: str,
+    payload: NeotelExternalMessage,
+    db: DbSession,
+    token: str = Query(..., description="Per-account callback token."),
+) -> dict[str, Any]:
+    if payload.accountId != application_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Body accountId does not match path application_id.",
+        )
+
+    # Ignore echoes of our own inbound messages (Neotel will resend the same
+    # entity we sent it; treat those as no-ops).
+    is_inbound = (
+        bool(payload.isInbound)
+        if isinstance(payload.isInbound, bool)
+        else (payload.isInbound == 1)
+    )
+    if is_inbound:
+        return {"success": True, "noop": "isInbound=true is not an agent reply"}
+
+    result = await db.execute(
+        select(WhatsAppNumber).where(
+            WhatsAppNumber.webhook_format == "external_neotel",
+            WhatsAppNumber.webhook_extra["application_id"].astext == application_id,
+            WhatsAppNumber.webhook_extra["callback_token"].astext == token,
+        )
+    )
+    number = result.scalar_one_or_none()
+    if number is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Unknown application or invalid token.",
+        )
+
+    if number.status != "connected":
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"WhatsApp number is not connected (status={number.status}).",
+        )
+
+    if payload.attachment is not None:
+        # Attachments would require uploading the base64 to Evolution's media
+        # endpoint. Out of scope for v1.
+        raise HTTPException(
+            status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
+            detail="Attachments not yet supported — only text messages.",
+        )
+
+    if not payload.text:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="text is required when no attachment is provided.",
+        )
+
+    phone_digits = "".join(ch for ch in payload.contactId if ch.isdigit())
+    if not phone_digits:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="contactId must contain at least one digit.",
+        )
+
+    try:
+        await evolution_client.send_text(
+            number.instance_name,
+            phone_digits,
+            payload.text,
+        )
+    except EvolutionAPIError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f"Evolution rejected the send: {exc.payload}",
+        ) from exc
+
+    return {"success": True, "id": payload.id}

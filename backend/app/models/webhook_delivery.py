@@ -24,7 +24,7 @@ VALID_STATUSES = (
     "failed",       # last attempt failed but retries remain
     "abandoned",    # exhausted max_attempts; manual intervention needed
 )
-VALID_FORMATS = ("portal", "apiwha_neotel", "neotel_custom")
+VALID_FORMATS = ("portal", "apiwha_neotel", "neotel_custom", "external_neotel")
 
 
 class WebhookDelivery(UUIDPkMixin, TimestampMixin, Base):
@@ -63,6 +63,12 @@ class WebhookDelivery(UUIDPkMixin, TimestampMixin, Base):
     # changes on the number don't affect already-queued deliveries.
     format: Mapped[str] = mapped_column(
         String(32), nullable=False, default="portal"
+    )
+    # Per-format auth headers snapshotted at enqueue time (e.g.
+    # external_neotel's ApplicationId + AccessToken). Null for formats that
+    # don't need request-time credentials.
+    extra_headers: Mapped[dict[str, Any] | None] = mapped_column(
+        JSONB, nullable=True
     )
 
     attempts: Mapped[int] = mapped_column(Integer, nullable=False, default=0)

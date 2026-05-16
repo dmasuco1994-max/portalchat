@@ -37,22 +37,29 @@ import { useUpdateWebhookConfig } from "@/lib/hooks/use-webhook";
 const APIWHA_DEFAULT_URL = "https://s2.neotel.us/NeoWebhook/api/ApiWha";
 const NEOTEL_CUSTOM_DEFAULT_URL =
   "https://s2.neotel.cc/neowebhook/api/CustomAccount/Messages/";
+const EXTERNAL_NEOTEL_DEFAULT_URL =
+  "https://webhook.neotel.com.ar/NeoWebhookTest/api/ExternalApplication/SendMessage";
 
 const schema = z
   .object({
-    format: z.enum(["portal", "apiwha_neotel", "neotel_custom"]),
+    format: z.enum([
+      "portal",
+      "apiwha_neotel",
+      "neotel_custom",
+      "external_neotel",
+    ]),
     url: z.string().url("Must be a valid URL"),
     active: z.boolean(),
     events: z.array(z.string()),
     rotateSecret: z.boolean(),
     neotelToken: z.string(),
     neotelAccountId: z.string(),
+    neotelApplicationId: z.string(),
+    neotelAccessToken: z.string(),
   })
   .superRefine((data, ctx) => {
     if (data.format === "neotel_custom") {
       // Reject URLs that don't include a channel segment after /Messages/.
-      // Neotel's API requires …/CustomAccount/Messages/{channel[@provider]}
-      // and returns 404 otherwise.
       const match = data.url.match(/\/Messages\/?([^/?#]*)/);
       if (!match || !match[1]) {
         ctx.addIssue({
@@ -60,6 +67,22 @@ const schema = z
           path: ["url"],
           message:
             "Append the channel segment after /Messages/ — e.g. /Messages/myChannel or /Messages/myChannel@MyProvider",
+        });
+      }
+    }
+    if (data.format === "external_neotel") {
+      if (!data.neotelApplicationId.trim()) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["neotelApplicationId"],
+          message: "Application ID is required (Neotel generates it).",
+        });
+      }
+      if (!data.neotelAccessToken.trim()) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["neotelAccessToken"],
+          message: "Access Token is required (Neotel generates it).",
         });
       }
     }
@@ -71,6 +94,8 @@ function defaultValues(number: WhatsAppNumber): FormValues {
   const extra = (number.webhook_extra ?? {}) as {
     token?: unknown;
     account_id?: unknown;
+    application_id?: unknown;
+    access_token?: unknown;
   };
   return {
     format: number.webhook_format,
@@ -81,6 +106,10 @@ function defaultValues(number: WhatsAppNumber): FormValues {
     neotelToken: typeof extra.token === "string" ? extra.token : "",
     neotelAccountId:
       typeof extra.account_id === "string" ? extra.account_id : "",
+    neotelApplicationId:
+      typeof extra.application_id === "string" ? extra.application_id : "",
+    neotelAccessToken:
+      typeof extra.access_token === "string" ? extra.access_token : "",
   };
 }
 
@@ -92,6 +121,18 @@ function buildCallbackUrl(accountId: string, token: string): string {
   return `${apiBase}/integrations/neotel/${encodeURIComponent(
     accountId
   )}/send?token=${encodeURIComponent(token)}`;
+}
+
+function buildExternalCallbackUrl(
+  applicationId: string,
+  token: string
+): string {
+  if (!applicationId || !token) return "";
+  const base = API_BASE.replace(/\/api\/v1\/?$/, "");
+  const apiBase = base.endsWith("/api/v1") ? base : `${base}/api/v1`;
+  return `${apiBase}/integrations/neotel/external/${encodeURIComponent(
+    applicationId
+  )}/inbox?token=${encodeURIComponent(token)}`;
 }
 
 function buildSendEndpointUrl(): string {
@@ -126,14 +167,17 @@ export function WebhookForm({ number }: { number: WhatsAppNumber }) {
   const format = form.watch("format");
   const isApiwha = format === "apiwha_neotel";
   const isNeotelCustom = format === "neotel_custom";
+  const isExternal = format === "external_neotel";
 
   React.useEffect(() => {
     if (isApiwha && !form.getValues("url")) {
       form.setValue("url", APIWHA_DEFAULT_URL);
     } else if (isNeotelCustom && !form.getValues("url")) {
       form.setValue("url", NEOTEL_CUSTOM_DEFAULT_URL);
+    } else if (isExternal && !form.getValues("url")) {
+      form.setValue("url", EXTERNAL_NEOTEL_DEFAULT_URL);
     }
-  }, [isApiwha, isNeotelCustom, form]);
+  }, [isApiwha, isNeotelCustom, isExternal, form]);
 
   const onSubmit = async (values: FormValues) => {
     try {
@@ -148,6 +192,11 @@ export function WebhookForm({ number }: { number: WhatsAppNumber }) {
           return;
         }
         extra = { account_id: values.neotelAccountId.trim() };
+      } else if (values.format === "external_neotel") {
+        extra = {
+          application_id: values.neotelApplicationId.trim(),
+          access_token: values.neotelAccessToken.trim(),
+        };
       }
 
       const result = await update.mutateAsync({
@@ -185,6 +234,8 @@ export function WebhookForm({ number }: { number: WhatsAppNumber }) {
         rotateSecret: false,
         neotelToken: "",
         neotelAccountId: "",
+        neotelApplicationId: "",
+        neotelAccessToken: "",
       });
       toast.success("Webhook cleared");
       setConfirmClear(false);
@@ -197,17 +248,28 @@ export function WebhookForm({ number }: { number: WhatsAppNumber }) {
   const savedExtra = (number.webhook_extra ?? {}) as {
     callback_token?: unknown;
     account_id?: unknown;
+    application_id?: unknown;
   };
   const callbackUrl =
+    isNeotelCustom &&
     typeof savedExtra.account_id === "string" &&
     typeof savedExtra.callback_token === "string"
       ? buildCallbackUrl(savedExtra.account_id, savedExtra.callback_token)
       : "";
+  const externalCallbackUrl =
+    isExternal &&
+    typeof savedExtra.application_id === "string" &&
+    typeof savedExtra.callback_token === "string"
+      ? buildExternalCallbackUrl(
+          savedExtra.application_id,
+          savedExtra.callback_token
+        )
+      : "";
 
-  const copyCallback = async () => {
-    if (!callbackUrl) return;
+  const copyCallback = async (url: string) => {
+    if (!url) return;
     try {
-      await navigator.clipboard.writeText(callbackUrl);
+      await navigator.clipboard.writeText(url);
       setCopiedCallback(true);
       setTimeout(() => setCopiedCallback(false), 1500);
       toast.success("Copied to clipboard");
@@ -223,11 +285,13 @@ export function WebhookForm({ number }: { number: WhatsAppNumber }) {
           <CardHeader>
             <CardTitle>CRM webhook</CardTitle>
             <CardDescription>
-              {isApiwha
-                ? "Apiwha-compatible form-encoded POST. No HMAC."
-                : isNeotelCustom
-                  ? "Neotel Custom Provider — bidirectional. We POST inbound to the Messages URL; Neotel POSTs outbound to the callback URL shown below."
-                  : "We POST signed JSON. Signature header: X-WhatsApp-Portal-Signature: sha256=<hex>."}
+              {isExternal
+                ? "Neotel External Application — self-service, fully bidirectional. We POST Message Entities to the Send URL with ApplicationId + AccessToken headers; Neotel POSTs agent replies to the callback URL below."
+                : isApiwha
+                  ? "Apiwha-compatible form-encoded POST. No HMAC."
+                  : isNeotelCustom
+                    ? "Neotel Custom Provider — bidirectional. We POST inbound to the Messages URL; Neotel POSTs outbound to the callback URL shown below."
+                    : "We POST signed JSON. Signature header: X-WhatsApp-Portal-Signature: sha256=<hex>."}
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-6">
@@ -256,14 +320,20 @@ export function WebhookForm({ number }: { number: WhatsAppNumber }) {
                         Neotel Custom Provider — bidirectional (needs
                         Custom Provider account)
                       </option>
+                      <option value="external_neotel">
+                        Neotel External Application — bidirectional,
+                        self-service ⭐ RECOMMENDED
+                      </option>
                     </select>
                   </FormControl>
                   <FormDescription>
-                    {isNeotelCustom
-                      ? "Custom Provider JSON. Requires a Custom Provider account on Neotel's side AND the channel name they assigned you in the URL below."
-                      : isApiwha
-                        ? "rapiwha drop-in. INBOX webhooks out + /send_message.php in. Requires Neotel's focal point to override the apiwha host in the SocialMedia .config."
-                        : "Forwards every event you pick below as signed JSON."}
+                    {isExternal
+                      ? "Create a new \"Aplicación Externa\" in Neotel: Redes Sociales → Aplicaciones Externas. Click Obtener Credenciales, paste the ApplicationId + AccessToken below, and paste our callback URL into Neotel's Webhook URL field. No focal point required."
+                      : isNeotelCustom
+                        ? "Custom Provider JSON. Requires a Custom Provider account on Neotel's side AND the channel name they assigned you in the URL below."
+                        : isApiwha
+                          ? "rapiwha drop-in. INBOX webhooks out + /send_message.php in. Requires Neotel's focal point to override the apiwha host in the SocialMedia .config."
+                          : "Forwards every event you pick below as signed JSON."}
                   </FormDescription>
                   <FormMessage />
                 </FormItem>
@@ -276,7 +346,11 @@ export function WebhookForm({ number }: { number: WhatsAppNumber }) {
               render={({ field }) => (
                 <FormItem>
                   <FormLabel>
-                    {isNeotelCustom ? "Messages endpoint URL" : "Endpoint URL"}
+                    {isNeotelCustom
+                      ? "Messages endpoint URL"
+                      : isExternal
+                        ? "Send Message URL"
+                        : "Endpoint URL"}
                   </FormLabel>
                   <FormControl>
                     <Input
@@ -286,7 +360,9 @@ export function WebhookForm({ number }: { number: WhatsAppNumber }) {
                           ? APIWHA_DEFAULT_URL
                           : isNeotelCustom
                             ? `${NEOTEL_CUSTOM_DEFAULT_URL}<channel>`
-                            : "https://crm.example.com/webhooks/whatsapp"
+                            : isExternal
+                              ? EXTERNAL_NEOTEL_DEFAULT_URL
+                              : "https://crm.example.com/webhooks/whatsapp"
                       }
                       {...field}
                     />
@@ -296,6 +372,14 @@ export function WebhookForm({ number }: { number: WhatsAppNumber }) {
                       Include the channel segment (and optionally{" "}
                       <code>@provider</code>). We derive the Events URL by
                       swapping <code>/Messages/</code> → <code>/Events/</code>.
+                    </FormDescription>
+                  )}
+                  {isExternal && (
+                    <FormDescription>
+                      Neotel&apos;s ExternalApplication endpoint. Default is
+                      the test env — swap <code>NeoWebhookTest</code> for the
+                      production path when you go live (ask Neotel for the
+                      exact prod URL).
                     </FormDescription>
                   )}
                   <FormMessage />
@@ -356,6 +440,95 @@ export function WebhookForm({ number }: { number: WhatsAppNumber }) {
               </>
             )}
 
+            {isExternal && (
+              <>
+                <FormField
+                  control={form.control}
+                  name="neotelApplicationId"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Application ID</FormLabel>
+                      <FormControl>
+                        <Input
+                          placeholder="generated by Neotel — Obtener Credenciales"
+                          {...field}
+                        />
+                      </FormControl>
+                      <FormDescription>
+                        Sent as <code>ApplicationId</code> header on every
+                        message we POST to Neotel. Also used as the{" "}
+                        <code>accountId</code> in the Message Entity body.
+                      </FormDescription>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={form.control}
+                  name="neotelAccessToken"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Access Token</FormLabel>
+                      <FormControl>
+                        <Input
+                          type="password"
+                          placeholder="generated by Neotel"
+                          {...field}
+                        />
+                      </FormControl>
+                      <FormDescription>
+                        Sent as <code>AccessToken</code> header. Treat as a
+                        secret.
+                      </FormDescription>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                {externalCallbackUrl ? (
+                  <div className="rounded-md border border-emerald-500/40 bg-emerald-500/5 p-3 text-sm">
+                    <p className="font-medium">
+                      Webhook URL (paste this into Neotel)
+                    </p>
+                    <p className="mt-1 text-muted-foreground">
+                      Open your &quot;Aplicación Externa&quot; config in
+                      Neotel and paste this URL into the{" "}
+                      <code>Webhook URL</code> field. Treat it as a secret —
+                      whoever has it can send agent replies through this
+                      number.
+                    </p>
+                    <div className="mt-2 flex items-stretch gap-2">
+                      <code className="flex-1 overflow-x-auto break-all rounded-md border bg-background p-2 font-mono text-xs">
+                        {externalCallbackUrl}
+                      </code>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="icon"
+                        onClick={() => copyCallback(externalCallbackUrl)}
+                        aria-label="Copy callback URL"
+                      >
+                        {copiedCallback ? (
+                          <Check className="size-4" />
+                        ) : (
+                          <Copy className="size-4" />
+                        )}
+                      </Button>
+                    </div>
+                    <p className="mt-2 text-xs text-muted-foreground">
+                      Replace the host with your tunneled URL (ngrok /
+                      cloudflared) in dev — Neotel must be able to reach it.
+                    </p>
+                  </div>
+                ) : (
+                  <p className="text-sm text-muted-foreground">
+                    Save the form to generate the callback URL Neotel needs.
+                  </p>
+                )}
+              </>
+            )}
+
             {isNeotelCustom && (
               <>
                 <FormField
@@ -399,7 +572,7 @@ export function WebhookForm({ number }: { number: WhatsAppNumber }) {
                         type="button"
                         variant="outline"
                         size="icon"
-                        onClick={copyCallback}
+                        onClick={() => copyCallback(callbackUrl)}
                         aria-label="Copy callback URL"
                       >
                         {copiedCallback ? (

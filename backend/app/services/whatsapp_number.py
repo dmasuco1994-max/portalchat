@@ -336,7 +336,7 @@ async def update_webhook_config(
     # in webhook_secret because the inbound handler gates on its truthiness.
     # Use a sentinel so future rotates still work the same way.
     new_secret_plain: str | None = None
-    if payload.format in ("apiwha_neotel", "neotel_custom"):
+    if payload.format in ("apiwha_neotel", "neotel_custom", "external_neotel"):
         if number.webhook_secret is None or payload.rotate_secret:
             # Generate a placeholder; not used for signing in these formats.
             number.webhook_secret = secrets.token_urlsafe(16)
@@ -345,11 +345,11 @@ async def update_webhook_config(
             new_secret_plain = secrets.token_urlsafe(32)
             number.webhook_secret = new_secret_plain
 
-    # For neotel_custom, generate a per-account callback_token the user pastes
-    # into Neotel's outbound `Host URL` config as `?token=...`. We rotate it
-    # only when explicitly requested (rotate_secret) or on first save.
+    # For neotel_custom + external_neotel, generate a callback_token the user
+    # pastes into Neotel's Webhook URL config as `?token=...`. Rotate only when
+    # explicitly requested or on first save.
     extra = dict(payload.extra or {})
-    if payload.format == "neotel_custom":
+    if payload.format in ("neotel_custom", "external_neotel"):
         existing_extra = dict(number.webhook_extra or {})
         existing_token = existing_extra.get("callback_token")
         if not isinstance(existing_token, str) or payload.rotate_secret:

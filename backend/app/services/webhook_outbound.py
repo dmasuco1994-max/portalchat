@@ -223,6 +223,56 @@ def build_neotel_message_payload(
     }
 
 
+def build_external_neotel_payload(
+    *,
+    raw_event: dict[str, Any],
+    application_id: str,
+    remote_phone: str | None,
+    remote_name: str | None,
+    content_type: str | None,
+    message_uuid: str | None,
+) -> dict[str, Any]:
+    """Inbound WhatsApp message → Neotel ExternalApplication Message Entity.
+
+    Spec: https://neotel-us.atlassian.net/wiki/spaces/NEOT/pages/6358021
+    POST `<base>/api/ExternalApplication/SendMessage` with headers
+    `ApplicationId` + `AccessToken` and this JSON body.
+    """
+    data = raw_event.get("data") or {}
+    key = data.get("key") or {}
+    message = data.get("message") or {}
+    text = (
+        message.get("conversation")
+        or (message.get("extendedTextMessage") or {}).get("text")
+        or ""
+    )
+    ts = data.get("messageTimestamp") or data.get("messageTimestampMs")
+    if isinstance(ts, (int, float)):
+        if ts > 10_000_000_000:
+            ts = ts / 1000
+        creation = datetime.fromtimestamp(ts, tz=timezone.utc)
+    else:
+        creation = datetime.now(timezone.utc)
+
+    return {
+        "id": str(key.get("id") or ""),
+        "creationTime": creation.isoformat(),
+        "text": text,
+        "contactId": remote_phone or "",
+        "contactName": remote_name or remote_phone or "Unknown",
+        "contactLastName": "",
+        "contactEmail": "",
+        "contactImgProfile": "",
+        "observations": "",
+        "crm": None,
+        "crmId": "",
+        "externalId": message_uuid or "",
+        "isInbound": True,
+        "accountId": application_id,
+        "attachment": None,
+    }
+
+
 def build_neotel_event_payload(
     *,
     raw_event: dict[str, Any],
@@ -262,6 +312,7 @@ async def enqueue_delivery(
     max_attempts: int = 5,
     format: str = "portal",
     prebuilt_payload: dict[str, Any] | None = None,
+    extra_headers: dict[str, str] | None = None,
 ) -> WebhookDelivery:
     """Persist a delivery row and dispatch an arq job for it.
 
@@ -270,6 +321,8 @@ async def enqueue_delivery(
       - apiwha_neotel → caller pre-builds an event dict (INBOX / MESSAGEPROCESSED
         / MESSAGEFAILED). At dispatch time it's wrapped as `data=<json>` form.
       - neotel_custom → caller pre-builds the JSON via `prebuilt_payload`
+      - external_neotel → caller pre-builds the Message Entity JSON and passes
+        `extra_headers` with ApplicationId + AccessToken.
     """
     if prebuilt_payload is not None:
         snapshot = prebuilt_payload
@@ -284,6 +337,7 @@ async def enqueue_delivery(
         payload=snapshot,
         secret=secret,
         format=format,
+        extra_headers=extra_headers,
         max_attempts=max_attempts,
         status="pending",
     )
@@ -350,6 +404,17 @@ async def process_webhook_delivery(ctx: dict, delivery_id: str) -> dict[str, Any
                 "X-WhatsApp-Portal-Delivery": str(row.id),
                 "X-WhatsApp-Portal-Attempt": str(attempt_n),
             }
+        elif row.format == "external_neotel":
+            body_bytes = json.dumps(row.payload, separators=(",", ":")).encode("utf-8")
+            headers = {
+                "Content-Type": "application/json",
+                "X-WhatsApp-Portal-Delivery": str(row.id),
+                "X-WhatsApp-Portal-Attempt": str(attempt_n),
+            }
+            if row.extra_headers:
+                # ApplicationId + AccessToken, per Neotel's spec.
+                for k, v in row.extra_headers.items():
+                    headers[k] = str(v)
         else:
             body_bytes = json.dumps(row.payload, separators=(",", ":")).encode("utf-8")
             signature = _sign(row.secret, body_bytes)

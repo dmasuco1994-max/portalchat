@@ -18,7 +18,11 @@ export type NumberStatus =
   | "disconnected"
   | "failed";
 
-export type WebhookFormat = "portal" | "apiwha_neotel" | "neotel_custom";
+export type WebhookFormat =
+  | "portal"
+  | "apiwha_neotel"
+  | "neotel_custom"
+  | "external_neotel";
 
 export interface WhatsAppNumber {
   id: string;

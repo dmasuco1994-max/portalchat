@@ -131,6 +131,22 @@ async def handle_evolution_event(
 
     # Enqueue async CRM delivery (Phase 5 — durable, retried).
     if webhook_active and webhook_url and webhook_secret:
+        if webhook_format == "external_neotel":
+            await _dispatch_external_neotel(
+                db=db,
+                arq_pool=arq_pool,
+                organization_id=organization_id,
+                number_id=number_id,
+                instance_name=instance_name,
+                event=event,
+                payload=payload,
+                webhook_url=webhook_url,
+                webhook_secret=webhook_secret,
+                webhook_extra=webhook_extra,
+                upsert_result=summary.get("message"),
+            )
+            return summary
+
         if webhook_format == "apiwha_neotel":
             await _dispatch_apiwha(
                 db=db,
@@ -191,6 +207,86 @@ async def handle_evolution_event(
             summary["crm_delivery_status"] = delivery.status
 
     return summary
+
+
+async def _dispatch_external_neotel(
+    *,
+    db: AsyncSession,
+    arq_pool,
+    organization_id,
+    number_id,
+    instance_name: str,
+    event: str,
+    payload: dict[str, Any],
+    webhook_url: str,
+    webhook_secret: str,
+    webhook_extra: dict[str, Any],
+    upsert_result: dict[str, Any] | None,
+) -> None:
+    """Build the Neotel ExternalApplication Message Entity and enqueue with
+    ApplicationId + AccessToken headers.
+
+    Only inbound MESSAGES_UPSERT (not fromMe) is forwarded — status updates
+    and outbound echoes don't have an obvious mapping in the ExternalApp
+    Message Entity. They can be wired later if Neotel ends up needing them.
+    """
+    from app.services.webhook_outbound import (
+        build_external_neotel_payload,
+        enqueue_delivery,
+    )
+
+    if event != "MESSAGES_UPSERT":
+        return
+    key = (payload.get("data") or {}).get("key") or {}
+    if bool(key.get("fromMe")):
+        return
+    if not upsert_result:
+        logger.warning(
+            "external_neotel delivery skipped: no message context for %s",
+            number_id,
+        )
+        return
+
+    application_id = (webhook_extra.get("application_id") or "").strip()
+    access_token = (webhook_extra.get("access_token") or "").strip()
+    if not application_id or not access_token:
+        logger.warning(
+            "external_neotel delivery skipped: number %s is missing application_id or access_token",
+            number_id,
+        )
+        return
+
+    prebuilt = build_external_neotel_payload(
+        raw_event=payload,
+        application_id=application_id,
+        remote_phone=upsert_result.get("remote_phone"),
+        remote_name=upsert_result.get("remote_name"),
+        content_type=upsert_result.get("type"),
+        message_uuid=upsert_result.get("persisted_message_id"),
+    )
+
+    delivery = await enqueue_delivery(
+        db,
+        arq_pool,
+        organization_id=organization_id,
+        whatsapp_number_id=number_id,
+        target_url=webhook_url,
+        secret=webhook_secret,
+        event_type=event,
+        instance_name=instance_name,
+        raw_event_payload=payload,
+        format="external_neotel",
+        prebuilt_payload=prebuilt,
+        extra_headers={
+            "ApplicationId": application_id,
+            "AccessToken": access_token,
+        },
+    )
+    logger.info(
+        "external_neotel delivery enqueued: %s for event %s",
+        delivery.id,
+        event,
+    )
 
 
 async def _dispatch_apiwha(

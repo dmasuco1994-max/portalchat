@@ -336,20 +336,32 @@ async def update_webhook_config(
     # in webhook_secret because the inbound handler gates on its truthiness.
     # Use a sentinel so future rotates still work the same way.
     new_secret_plain: str | None = None
-    if payload.format == "apiwha_neotel":
+    if payload.format in ("apiwha_neotel", "neotel_custom"):
         if number.webhook_secret is None or payload.rotate_secret:
-            # Generate a placeholder; not shown to user, not used for signing.
+            # Generate a placeholder; not used for signing in these formats.
             number.webhook_secret = secrets.token_urlsafe(16)
     else:
         if number.webhook_secret is None or payload.rotate_secret:
             new_secret_plain = secrets.token_urlsafe(32)
             number.webhook_secret = new_secret_plain
 
+    # For neotel_custom, generate a per-account callback_token the user pastes
+    # into Neotel's outbound `Host URL` config as `?token=...`. We rotate it
+    # only when explicitly requested (rotate_secret) or on first save.
+    extra = dict(payload.extra or {})
+    if payload.format == "neotel_custom":
+        existing_extra = dict(number.webhook_extra or {})
+        existing_token = existing_extra.get("callback_token")
+        if not isinstance(existing_token, str) or payload.rotate_secret:
+            extra["callback_token"] = secrets.token_urlsafe(32)
+        else:
+            extra["callback_token"] = existing_token
+
     number.webhook_url = str(payload.url)
     number.webhook_events = payload.events
     number.webhook_active = payload.active
     number.webhook_format = payload.format
-    number.webhook_extra = payload.extra
+    number.webhook_extra = extra or None
 
     await db.commit()
     await db.refresh(number)

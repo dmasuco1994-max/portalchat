@@ -141,6 +141,32 @@ async def handle_evolution_event(
             should_deliver = (
                 event == "MESSAGES_UPSERT" and not bool(key.get("fromMe"))
             )
+        elif webhook_format == "neotel_custom":
+            # Custom Provider only cares about inbound messages and status updates.
+            key = (data.get("key") or {}) if isinstance(data, dict) else {}
+            if event == "MESSAGES_UPSERT":
+                should_deliver = not bool(key.get("fromMe"))
+            elif event == "MESSAGES_UPDATE":
+                should_deliver = True
+            else:
+                should_deliver = False
+
+        if should_deliver and webhook_format == "neotel_custom":
+            await _dispatch_neotel_custom(
+                db=db,
+                arq_pool=arq_pool,
+                organization_id=organization_id,
+                number_id=number_id,
+                instance_name=instance_name,
+                event=event,
+                payload=payload,
+                webhook_url=webhook_url,
+                webhook_secret=webhook_secret,
+                webhook_extra=webhook_extra,
+                our_phone_number=our_phone_number,
+                upsert_result=summary.get("message"),
+            )
+            return summary
 
         if should_deliver:
             apikey_token = webhook_extra.get("token") if isinstance(
@@ -164,6 +190,88 @@ async def handle_evolution_event(
             summary["crm_delivery_status"] = delivery.status
 
     return summary
+
+
+async def _dispatch_neotel_custom(
+    *,
+    db: AsyncSession,
+    arq_pool,
+    organization_id,
+    number_id,
+    instance_name: str,
+    event: str,
+    payload: dict[str, Any],
+    webhook_url: str,
+    webhook_secret: str,
+    webhook_extra: dict[str, Any],
+    our_phone_number: str | None,
+    upsert_result: dict[str, Any] | None,
+) -> None:
+    """Build the Custom Provider envelope and enqueue a delivery.
+
+    Inbound MESSAGES_UPSERT goes to the Messages URL (provided by user).
+    MESSAGES_UPDATE goes to the Events URL (derived from Messages URL by
+    swapping the path segment).
+    """
+    from app.services.webhook_outbound import (
+        build_neotel_event_payload,
+        build_neotel_message_payload,
+        derive_neotel_events_url,
+        enqueue_delivery,
+        hash_uuid_to_int,
+    )
+
+    account_id = (webhook_extra.get("account_id") or "").strip()
+    if not account_id:
+        logger.warning(
+            "neotel_custom delivery skipped: number %s has no account_id in webhook_extra",
+            number_id,
+        )
+        return
+
+    if event == "MESSAGES_UPSERT":
+        if not upsert_result or not upsert_result.get("conversation_id"):
+            logger.warning(
+                "neotel_custom delivery skipped: no conversation context for %s",
+                number_id,
+            )
+            return
+        prebuilt = build_neotel_message_payload(
+            raw_event=payload,
+            account_id=account_id,
+            conversation_id_int=hash_uuid_to_int(
+                upsert_result["conversation_id"]
+            ),
+            our_phone_number=our_phone_number,
+            remote_phone=upsert_result.get("remote_phone"),
+            remote_name=upsert_result.get("remote_name"),
+            content_type=upsert_result.get("type"),
+        )
+        target_url = webhook_url
+    elif event == "MESSAGES_UPDATE":
+        prebuilt = build_neotel_event_payload(
+            raw_event=payload,
+            account_id=account_id,
+        )
+        if prebuilt is None:
+            return
+        target_url = derive_neotel_events_url(webhook_url)
+    else:
+        return
+
+    await enqueue_delivery(
+        db,
+        arq_pool,
+        organization_id=organization_id,
+        whatsapp_number_id=number_id,
+        target_url=target_url,
+        secret=webhook_secret,
+        event_type=event,
+        instance_name=instance_name,
+        raw_event_payload=payload,
+        format="neotel_custom",
+        prebuilt_payload=prebuilt,
+    )
 
 
 async def _handle_message_upsert(
@@ -232,6 +340,9 @@ async def _handle_message_upsert(
         "persisted_message_id": str(msg.id),
         "direction": direction,
         "type": content_type,
+        "conversation_id": str(conv.id),
+        "remote_name": conv.remote_name,
+        "remote_phone": conv.remote_phone,
     }
 
 

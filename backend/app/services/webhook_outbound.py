@@ -113,6 +113,118 @@ def build_apiwha_payload(
     return body
 
 
+# ---- neotel_custom adapter -----------------------------------------------
+NEOTEL_CONTENT_TYPE_MAP = {
+    "text": "chat",
+    "image": "image",
+    "audio": "audio",
+    "video": "video",
+    "document": "document",
+    "sticker": "image",
+    "ptt": "ptt",
+}
+
+NEOTEL_STATUS_MAP = {
+    "PENDING": "received",
+    "SERVER_ACK": "received",
+    "DELIVERY_ACK": "delivered",
+    "READ": "read",
+    "PLAYED": "viewed",
+}
+
+
+def hash_uuid_to_int(uuid_str: str | None) -> int:
+    """Map a UUID string to a stable positive 31-bit integer.
+
+    Neotel's Custom Provider requires `conversationId` as an integer; our
+    conversations are UUIDs. We hash to a 31-bit range so the value fits in
+    every typical signed-int column (Java/SQL Server-friendly) and stays
+    positive. Deterministic across deliveries and processes.
+    """
+    if not uuid_str:
+        return 0
+    digest = hashlib.blake2b(uuid_str.encode("utf-8"), digest_size=4).digest()
+    return int.from_bytes(digest, "big") & 0x7FFFFFFF
+
+
+def derive_neotel_events_url(messages_url: str) -> str:
+    """The user pastes the Messages URL; the Events URL is the same path with
+    /Messages/ → /Events/. Apply once."""
+    return messages_url.replace("/Messages/", "/Events/", 1)
+
+
+def build_neotel_message_payload(
+    *,
+    raw_event: dict[str, Any],
+    account_id: str,
+    conversation_id_int: int,
+    our_phone_number: str | None,
+    remote_phone: str | None,
+    remote_name: str | None,
+    content_type: str | None,
+) -> dict[str, Any]:
+    """Inbound message → Neotel CustomAccount/Messages payload."""
+    data = raw_event.get("data") or {}
+    key = data.get("key") or {}
+    message = data.get("message") or {}
+    text = (
+        message.get("conversation")
+        or (message.get("extendedTextMessage") or {}).get("text")
+        or ""
+    )
+    ts = data.get("messageTimestamp") or data.get("messageTimestampMs")
+    if isinstance(ts, (int, float)):
+        if ts > 10_000_000_000:
+            time_ms = int(ts)
+        else:
+            time_ms = int(ts * 1000)
+    else:
+        time_ms = int(datetime.now(timezone.utc).timestamp() * 1000)
+
+    neotel_type = NEOTEL_CONTENT_TYPE_MAP.get(content_type or "text", "chat")
+
+    return {
+        "accountId": account_id,
+        "messages": [
+            {
+                "id": str(key.get("id") or ""),
+                "body": text,
+                "caption": "",
+                "type": neotel_type,
+                "contactName": remote_name or remote_phone or "",
+                "contactNumber": remote_phone or "",
+                "time": time_ms,
+                "conversationId": conversation_id_int,
+                "isBot": False,
+            }
+        ],
+    }
+
+
+def build_neotel_event_payload(
+    *,
+    raw_event: dict[str, Any],
+    account_id: str,
+) -> dict[str, Any] | None:
+    """Status update (MESSAGES_UPDATE) → Neotel CustomAccount/Events payload.
+    Returns None when the Evolution status doesn't map to a Neotel status."""
+    data = raw_event.get("data") or {}
+    key = data.get("key") or {}
+    raw_status = (data.get("status") or "").upper()
+    neotel_status = NEOTEL_STATUS_MAP.get(raw_status)
+    if neotel_status is None:
+        return None
+    return {
+        "InstanceId": account_id,
+        "events": [
+            {
+                "id": str(key.get("id") or ""),
+                "status": neotel_status,
+            }
+        ],
+    }
+
+
 # ---- Enqueue (called from the inbound webhook handler) -------------------
 async def enqueue_delivery(
     db,
@@ -129,14 +241,18 @@ async def enqueue_delivery(
     format: str = "portal",
     our_phone_number: str | None = None,
     apikey: str | None = None,
+    prebuilt_payload: dict[str, Any] | None = None,
 ) -> WebhookDelivery:
     """Persist a delivery row and dispatch an arq job for it.
 
     The body stored in `payload` depends on `format`:
       - portal → our envelope (UUID + event + raw payload)
       - apiwha_neotel → flat apiwha shape ready to URL-encode at dispatch time
+      - neotel_custom → caller pre-builds the JSON via `prebuilt_payload`
     """
-    if format == "apiwha_neotel":
+    if prebuilt_payload is not None:
+        snapshot = prebuilt_payload
+    elif format == "apiwha_neotel":
         snapshot = build_apiwha_payload(
             our_phone_number=our_phone_number,
             raw_event=raw_event_payload,
@@ -207,6 +323,13 @@ async def process_webhook_delivery(ctx: dict, delivery_id: str) -> dict[str, Any
             ).encode("utf-8")
             headers = {
                 "Content-Type": "application/x-www-form-urlencoded",
+                "X-WhatsApp-Portal-Delivery": str(row.id),
+                "X-WhatsApp-Portal-Attempt": str(attempt_n),
+            }
+        elif row.format == "neotel_custom":
+            body_bytes = json.dumps(row.payload, separators=(",", ":")).encode("utf-8")
+            headers = {
+                "Content-Type": "application/json",
                 "X-WhatsApp-Portal-Delivery": str(row.id),
                 "X-WhatsApp-Portal-Attempt": str(attempt_n),
             }

@@ -24,7 +24,7 @@ VALID_STATUSES = (
     "failed",       # last attempt failed but retries remain
     "abandoned",    # exhausted max_attempts; manual intervention needed
 )
-VALID_FORMATS = ("portal", "apiwha_neotel")
+VALID_FORMATS = ("portal", "apiwha_neotel", "neotel_custom")
 
 
 class WebhookDelivery(UUIDPkMixin, TimestampMixin, Base):

@@ -23,7 +23,7 @@ from app.models.mixins import TimestampMixin, UUIDPkMixin
 #   disconnected — was connected, lost session (network, logout, etc.)
 #   failed       — Evolution returned an error during create/connect
 VALID_STATUSES = ("created", "connecting", "connected", "disconnected", "failed")
-VALID_WEBHOOK_FORMATS = ("portal", "apiwha_neotel")
+VALID_WEBHOOK_FORMATS = ("portal", "apiwha_neotel", "neotel_custom")
 
 
 class WhatsAppNumber(UUIDPkMixin, TimestampMixin, Base):

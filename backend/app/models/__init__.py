@@ -4,6 +4,7 @@ from app.models.message import Message
 from app.models.organization import Organization
 from app.models.refresh_token import RefreshToken
 from app.models.user import User
+from app.models.webhook_delivery import WebhookDelivery
 from app.models.whatsapp_number import WhatsAppNumber
 
 __all__ = [
@@ -12,5 +13,6 @@ __all__ = [
     "Organization",
     "RefreshToken",
     "User",
+    "WebhookDelivery",
     "WhatsAppNumber",
 ]

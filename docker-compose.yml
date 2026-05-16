@@ -103,6 +103,30 @@ services:
     networks:
       - portal_net
 
+  worker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: portal_worker
+    restart: unless-stopped
+    command: arq app.workers.arq_worker.WorkerSettings
+    environment:
+      DATABASE_URL: ${DATABASE_URL}
+      REDIS_URL: ${REDIS_URL}
+      EVOLUTION_BASE_URL: ${EVOLUTION_BASE_URL}
+      EVOLUTION_API_KEY: ${EVOLUTION_API_KEY}
+      SECRET_KEY: ${SECRET_KEY}
+      ENVIRONMENT: ${ENVIRONMENT:-development}
+    volumes:
+      - ./backend:/app
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - portal_net
+
 volumes:
   postgres_data:
   redis_data:

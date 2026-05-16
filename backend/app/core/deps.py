@@ -4,7 +4,8 @@ from typing import Annotated
 from uuid import UUID
 
 import jwt
-from fastapi import Depends, HTTPException, status
+from arq import ArqRedis
+from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -29,6 +30,13 @@ async def get_db() -> AsyncGenerator[AsyncSession, None]:
 
 
 DbSession = Annotated[AsyncSession, Depends(get_db)]
+
+
+def get_arq_pool(request: Request) -> ArqRedis:
+    return request.app.state.arq_pool
+
+
+ArqPool = Annotated[ArqRedis, Depends(get_arq_pool)]
 
 
 async def get_current_user(

@@ -19,7 +19,7 @@ from app.models.conversation import Conversation
 from app.models.message import Message
 from app.models.whatsapp_number import WhatsAppNumber
 from app.services.evolution import map_state_to_status
-from app.services.webhook_outbound import deliver_to_crm
+from app.services.webhook_outbound import enqueue_delivery
 
 
 # ---- helpers --------------------------------------------------------------
@@ -97,8 +97,12 @@ async def handle_evolution_event(
     db: AsyncSession,
     number: WhatsAppNumber,
     payload: dict[str, Any],
+    arq_pool=None,
 ) -> dict[str, Any]:
-    """Main dispatcher. Returns a brief summary for the receiver to log."""
+    """Main dispatcher. Persists data, then enqueues an async CRM delivery.
+
+    arq_pool may be None in tests; when so, we skip enqueue and surface that.
+    """
     event = _normalize_event(payload.get("event", ""))
     data = payload.get("data") or {}
 
@@ -109,6 +113,8 @@ async def handle_evolution_event(
     webhook_secret = number.webhook_secret
     webhook_events = list(number.webhook_events or [])
     instance_name = number.instance_name
+    organization_id = number.organization_id
+    number_id = number.id
 
     summary: dict[str, Any] = {"event": event, "instance": instance_name}
 
@@ -120,21 +126,22 @@ async def handle_evolution_event(
         summary["connection"] = await _handle_connection_update(db, number, data)
     # QRCODE_UPDATED: we poll directly, ignore here.
 
-    # Forward to CRM webhook (sync — Phase 5 will move to async queue).
+    # Enqueue async CRM delivery (Phase 5 — durable, retried).
     if webhook_active and webhook_url and webhook_secret:
         if not webhook_events or event in [e.upper() for e in webhook_events]:
-            try:
-                await deliver_to_crm(
-                    url=webhook_url,
-                    secret=webhook_secret,
-                    event=event,
-                    instance=instance_name,
-                    payload=payload,
-                )
-                summary["crm_delivery"] = "sent"
-            except Exception as exc:
-                # Don't fail the Evolution callback because the CRM is down.
-                summary["crm_delivery"] = f"failed: {exc}"
+            delivery = await enqueue_delivery(
+                db,
+                arq_pool,
+                organization_id=organization_id,
+                whatsapp_number_id=number_id,
+                target_url=webhook_url,
+                secret=webhook_secret,
+                event_type=event,
+                instance_name=instance_name,
+                raw_event_payload=payload,
+            )
+            summary["crm_delivery_id"] = str(delivery.id)
+            summary["crm_delivery_status"] = delivery.status
 
     return summary
 

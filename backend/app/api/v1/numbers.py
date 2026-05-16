@@ -1,9 +1,12 @@
 """WhatsApp number management endpoints."""
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, Query, status
+from sqlalchemy import select
 
 from app.core.deps import CurrentUser, DbSession, require_admin
+from app.models.webhook_delivery import WebhookDelivery
+from app.schemas.webhook_delivery import WebhookDeliveryRead
 from app.schemas.whatsapp_number import (
     ConnectionStatusResponse,
     QrCodeResponse,
@@ -98,6 +101,28 @@ async def delete_(
     number_id: UUID, db: DbSession, current: CurrentUser
 ) -> None:
     await delete_number(db, current.organization_id, number_id)
+
+
+@router.get(
+    "/{number_id}/webhook-deliveries",
+    response_model=list[WebhookDeliveryRead],
+    summary="List recent CRM webhook delivery attempts (debugging).",
+)
+async def list_webhook_deliveries(
+    number_id: UUID,
+    db: DbSession,
+    current: CurrentUser,
+    limit: int = Query(default=50, ge=1, le=500),
+) -> list[WebhookDeliveryRead]:
+    # Tenant scope check via get_number
+    await get_number(db, current.organization_id, number_id)
+    result = await db.execute(
+        select(WebhookDelivery)
+        .where(WebhookDelivery.whatsapp_number_id == number_id)
+        .order_by(WebhookDelivery.created_at.desc())
+        .limit(limit)
+    )
+    return [WebhookDeliveryRead.model_validate(d) for d in result.scalars().all()]
 
 
 @router.post(

@@ -1,6 +1,7 @@
 """FastAPI application entrypoint."""
 from contextlib import asynccontextmanager
 
+from arq.connections import RedisSettings, create_pool
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -14,9 +15,13 @@ configure_logging()
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Startup hooks (DB pool warmed up implicitly via first query).
+    # Startup: open arq pool so the inbound webhook handler can enqueue jobs.
+    app.state.arq_pool = await create_pool(
+        RedisSettings.from_dsn(settings.redis_url)
+    )
     yield
-    # Shutdown: dispose of the connection pool cleanly.
+    # Shutdown
+    await app.state.arq_pool.close()
     await engine.dispose()
 
 

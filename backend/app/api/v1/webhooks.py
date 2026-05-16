@@ -12,7 +12,7 @@ from typing import Any
 
 from fastapi import APIRouter, HTTPException, status
 
-from app.core.deps import DbSession
+from app.core.deps import ArqPool, DbSession
 from app.services.webhook_inbound import handle_evolution_event
 from app.services.whatsapp_number import get_number_by_instance
 
@@ -28,14 +28,13 @@ async def receive_evolution_event(
     instance_name: str,
     payload: dict[str, Any],
     db: DbSession,
+    arq_pool: ArqPool,
 ) -> dict[str, Any]:
     number = await get_number_by_instance(db, instance_name)
     if number is None:
-        # Don't 404 — could leak instance existence; instead 204-style silent ok.
-        # But for dev clarity we 404. Revisit before going public.
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Unknown instance",
         )
-    summary = await handle_evolution_event(db, number, payload)
+    summary = await handle_evolution_event(db, number, payload, arq_pool=arq_pool)
     return {"received": True, **summary}

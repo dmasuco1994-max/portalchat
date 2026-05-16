@@ -36,6 +36,15 @@ class Conversation(UUIDPkMixin, TimestampMixin, Base):
     remote_jid: Mapped[str] = mapped_column(String(120), nullable=False, index=True)
     remote_phone: Mapped[str | None] = mapped_column(String(40), nullable=True)
     remote_name: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    # WhatsApp signs profile picture URLs with a short-lived token. We re-fetch
+    # periodically — `profile_picture_fetched_at` is the cooldown signal so we
+    # don't hammer Evolution on every webhook.
+    profile_picture_url: Mapped[str | None] = mapped_column(
+        String(1000), nullable=True
+    )
+    profile_picture_fetched_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     last_message_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True, index=True
     )

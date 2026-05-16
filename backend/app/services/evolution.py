@@ -67,6 +67,28 @@ class EvolutionClient:
     async def delete_instance(self, instance_name: str) -> dict[str, Any]:
         return await self._request("DELETE", f"/instance/delete/{instance_name}")
 
+    async def fetch_profile_picture_url(
+        self, instance_name: str, jid: str
+    ) -> str | None:
+        """Best-effort fetch of the contact's profile picture URL.
+
+        Returns None if Evolution fails or the contact has no picture.
+        Note: WhatsApp signs the returned URL with a short-lived token (a few
+        hours to a few days). Callers should refetch periodically.
+        """
+        try:
+            response = await self._request(
+                "POST",
+                f"/chat/fetchProfilePictureUrl/{instance_name}",
+                json={"number": jid},
+            )
+        except EvolutionAPIError:
+            return None
+        if not isinstance(response, dict):
+            return None
+        url = response.get("profilePictureUrl") or response.get("url")
+        return url if isinstance(url, str) and url.startswith("http") else None
+
     async def fetch_instance_info(self, instance_name: str) -> dict[str, Any] | None:
         """Returns Evolution's full record for an instance (incl. ownerJid).
 

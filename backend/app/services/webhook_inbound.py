@@ -9,8 +9,10 @@ Responsibilities:
 Sync delivery to CRM is intentional for Phase 4 — Phase 5 will introduce an
 async queue with retries and HMAC-signed deliveries.
 """
+import asyncio
 import logging
-from datetime import datetime, timezone
+import uuid
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from sqlalchemy import select
@@ -40,32 +42,90 @@ def _extract_phone(jid: str | None) -> str | None:
     return "".join(ch for ch in jid.split("@")[0] if ch.isdigit()) or None
 
 
-def _extract_text_and_type(message_payload: dict[str, Any] | None) -> tuple[str, str | None]:
-    """Returns (content_type, text or None)."""
+def _extract_content(
+    message_payload: dict[str, Any] | None,
+) -> tuple[str, str | None, str | None]:
+    """Returns (content_type, text or None, media_url or None).
+
+    Media URLs are the raw WhatsApp CDN links Baileys puts in the event. They
+    require the `mediaKey` plus AES-CBC + HMAC decryption to actually serve the
+    bytes — we store them as a hint for later media-proxy work and so the
+    frontend can show \"image attachment\" affordances even if it can't render
+    the bytes yet.
+    """
     if not message_payload:
-        return "unknown", None
+        return "unknown", None, None
 
     if "conversation" in message_payload:
-        return "text", message_payload["conversation"]
+        return "text", message_payload["conversation"], None
     if "extendedTextMessage" in message_payload:
-        return "text", message_payload["extendedTextMessage"].get("text")
+        return "text", message_payload["extendedTextMessage"].get("text"), None
     if "imageMessage" in message_payload:
-        return "image", message_payload["imageMessage"].get("caption")
+        m = message_payload["imageMessage"]
+        return "image", m.get("caption"), m.get("url")
     if "videoMessage" in message_payload:
-        return "video", message_payload["videoMessage"].get("caption")
+        m = message_payload["videoMessage"]
+        return "video", m.get("caption"), m.get("url")
     if "audioMessage" in message_payload:
-        return "audio", None
+        return "audio", None, message_payload["audioMessage"].get("url")
     if "documentMessage" in message_payload:
-        return "document", message_payload["documentMessage"].get("fileName")
+        m = message_payload["documentMessage"]
+        return "document", m.get("fileName"), m.get("url")
     if "stickerMessage" in message_payload:
-        return "sticker", None
+        return "sticker", None, message_payload["stickerMessage"].get("url")
     if "locationMessage" in message_payload:
-        return "location", None
+        return "location", None, None
     if "contactMessage" in message_payload or "contactsArrayMessage" in message_payload:
-        return "contact", None
+        return "contact", None, None
     if "reactionMessage" in message_payload:
-        return "reaction", message_payload["reactionMessage"].get("text")
-    return "unknown", None
+        return "reaction", message_payload["reactionMessage"].get("text"), None
+    return "unknown", None, None
+
+
+def _extract_text_and_type(
+    message_payload: dict[str, Any] | None,
+) -> tuple[str, str | None]:
+    """Backwards-compatible 2-tuple wrapper around _extract_content."""
+    ct, text, _ = _extract_content(message_payload)
+    return ct, text
+
+
+# Refresh the profile picture at most this often. WhatsApp signs the URLs with
+# a short-lived token; this balances freshness vs Evolution load.
+PROFILE_PICTURE_TTL = timedelta(hours=6)
+
+
+async def _fetch_profile_picture_background(
+    conversation_id: uuid.UUID,
+    instance_name: str,
+    remote_jid: str,
+) -> None:
+    """Fire-and-forget: fetch the contact's profile picture URL via Evolution
+    and persist it. Best-effort — failures are swallowed because this is not
+    on the critical path of message ingest."""
+    from app.db.session import AsyncSessionLocal
+    from app.services.evolution import evolution_client
+
+    try:
+        url = await evolution_client.fetch_profile_picture_url(
+            instance_name, remote_jid
+        )
+        async with AsyncSessionLocal() as session:
+            await session.execute(
+                Conversation.__table__.update()
+                .where(Conversation.id == conversation_id)
+                .values(
+                    profile_picture_url=url,
+                    profile_picture_fetched_at=datetime.now(timezone.utc),
+                )
+            )
+            await session.commit()
+    except Exception as exc:  # noqa: BLE001 — background task, log & swallow
+        logger.warning(
+            "Could not refresh profile picture for conversation %s: %s",
+            conversation_id,
+            exc,
+        )
 
 
 async def _get_or_create_conversation(
@@ -81,6 +141,7 @@ async def _get_or_create_conversation(
         )
     )
     conv = result.scalar_one_or_none()
+    needs_pic_refresh = False
     if conv is None:
         conv = Conversation(
             organization_id=number.organization_id,
@@ -91,8 +152,23 @@ async def _get_or_create_conversation(
         )
         db.add(conv)
         await db.flush()
-    elif push_name and conv.remote_name != push_name:
-        conv.remote_name = push_name
+        needs_pic_refresh = True
+    else:
+        if push_name and conv.remote_name != push_name:
+            conv.remote_name = push_name
+        last_fetch = conv.profile_picture_fetched_at
+        if last_fetch is None or (
+            datetime.now(timezone.utc) - last_fetch >= PROFILE_PICTURE_TTL
+        ):
+            needs_pic_refresh = True
+
+    if needs_pic_refresh:
+        asyncio.create_task(
+            _fetch_profile_picture_background(
+                conv.id, number.instance_name, remote_jid
+            )
+        )
+
     return conv
 
 
@@ -481,7 +557,7 @@ async def _handle_message_upsert(
         db, number, remote_jid, push_name=data.get("pushName")
     )
 
-    content_type, text = _extract_text_and_type(data.get("message"))
+    content_type, text, media_url = _extract_content(data.get("message"))
     timestamp = data.get("messageTimestamp")
     if isinstance(timestamp, (int, float)):
         sent_at = datetime.fromtimestamp(timestamp, tz=timezone.utc)
@@ -507,6 +583,7 @@ async def _handle_message_upsert(
         to_jid=to_jid,
         content_type=content_type,
         content_text=text,
+        media_url=media_url,
         raw_payload=full_payload,
         status="delivered" if direction == "inbound" else "sent",
         sent_at=sent_at,

@@ -6,6 +6,7 @@ import { use } from "react";
 import { ArrowLeft, Phone } from "lucide-react";
 
 import { useAuth } from "@/components/providers/auth-provider";
+import { ContactAvatar } from "@/components/conversations/contact-avatar";
 import { MessageBubble } from "@/components/conversations/message-bubble";
 import { SendTextForm } from "@/components/conversations/send-text-form";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -23,15 +24,6 @@ function headerLabel(c: Conversation): string {
   if (c.remote_name) return c.remote_name;
   if (c.remote_phone) return `+${c.remote_phone}`;
   return c.remote_jid;
-}
-
-function avatarInitials(label: string): string {
-  return label
-    .split(/[\s@.]+/)
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((s) => s[0]?.toUpperCase())
-    .join("");
 }
 
 export default function ConversationViewerPage({
@@ -85,9 +77,11 @@ export default function ConversationViewerPage({
         >
           <ArrowLeft className="size-4" />
         </Link>
-        <span className="flex size-10 items-center justify-center rounded-full bg-brand-gradient text-sm font-semibold text-white">
-          {avatarInitials(headerName)}
-        </span>
+        <ContactAvatar
+          name={headerName}
+          pictureUrl={conversation?.profile_picture_url}
+          size="md"
+        />
         <div className="min-w-0 flex-1">
           <h1 className="truncate text-base font-semibold leading-tight">
             {headerName}

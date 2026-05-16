@@ -13,6 +13,7 @@ class ConversationRead(BaseModel):
     remote_jid: str
     remote_phone: str | None
     remote_name: str | None
+    profile_picture_url: str | None
     last_message_at: datetime | None
     created_at: datetime
     updated_at: datetime

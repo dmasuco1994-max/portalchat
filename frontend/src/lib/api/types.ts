@@ -60,6 +60,7 @@ export interface Conversation {
   remote_jid: string;
   remote_phone: string | null;
   remote_name: string | null;
+  profile_picture_url: string | null;
   last_message_at: string | null;
   created_at: string;
   updated_at: string;

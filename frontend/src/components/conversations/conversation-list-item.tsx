@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { ChevronRight } from "lucide-react";
 
+import { ContactAvatar } from "@/components/conversations/contact-avatar";
 import { Card } from "@/components/ui/card";
 import type { Conversation } from "@/lib/api/types";
 
@@ -8,15 +9,6 @@ function displayLabel(c: Conversation): string {
   if (c.remote_name) return c.remote_name;
   if (c.remote_phone) return `+${c.remote_phone}`;
   return c.remote_jid;
-}
-
-function initials(label: string): string {
-  return label
-    .split(/[\s@.]+/)
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((s) => s[0]?.toUpperCase())
-    .join("");
 }
 
 function timeLabel(iso: string | null): string {
@@ -45,9 +37,11 @@ export function ConversationListItem({ numberId, conversation }: Props) {
       className="block"
     >
       <Card className="group flex items-center gap-3 p-3 transition-all hover:border-primary/40 hover:shadow-sm">
-        <span className="flex size-11 shrink-0 items-center justify-center rounded-full bg-brand-gradient text-sm font-semibold text-white">
-          {initials(name) || "?"}
-        </span>
+        <ContactAvatar
+          name={name}
+          pictureUrl={conversation.profile_picture_url}
+          size="md"
+        />
         <div className="min-w-0 flex-1">
           <div className="flex items-center justify-between gap-2">
             <p className="truncate font-medium">{name}</p>

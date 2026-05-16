@@ -249,12 +249,43 @@ async def _handle_connection_update(
 ) -> dict[str, Any]:
     raw_state = data.get("state") or data.get("connection")
     new_status = map_state_to_status(raw_state)
+    changed = False
+
     if new_status != number.status:
         number.status = new_status
+        changed = True
         if new_status == "connected":
             number.last_connected_at = datetime.now(timezone.utc)
-            wuid = data.get("wuid") or data.get("ownerJid")
-            if wuid:
-                number.phone_number = _extract_phone(wuid)
+
+    # Try every JID-shaped field Evolution might send. Different Evolution
+    # versions and event flavours expose the owner under different keys.
+    if number.status == "connected" and not number.phone_number:
+        for candidate in (
+            data.get("wuid"),
+            data.get("ownerJid"),
+            data.get("owner"),
+            data.get("number"),
+            (data.get("instance") or {}).get("ownerJid"),
+            (data.get("instance") or {}).get("owner"),
+        ):
+            phone = _extract_phone(candidate) if isinstance(candidate, str) else None
+            if phone:
+                number.phone_number = phone
+                changed = True
+                break
+
+        # Last-resort: ask Evolution directly via fetchInstances.
+        if not number.phone_number:
+            from app.services.whatsapp_number import _try_capture_phone_from_evolution
+
+            if await _try_capture_phone_from_evolution(db, number):
+                changed = True
+
+    if changed:
         await db.commit()
-    return {"status": number.status, "raw_state": raw_state}
+
+    return {
+        "status": number.status,
+        "raw_state": raw_state,
+        "phone_number": number.phone_number,
+    }

@@ -19,6 +19,7 @@ from app.services.whatsapp_number import (
     fetch_qr,
     get_number,
     list_numbers,
+    rebind_webhook,
     sync_connection_status,
     update_webhook_config,
 )
@@ -97,6 +98,23 @@ async def delete_(
     number_id: UUID, db: DbSession, current: CurrentUser
 ) -> None:
     await delete_number(db, current.organization_id, number_id)
+
+
+@router.post(
+    "/{number_id}/rebind-webhook",
+    dependencies=[Depends(require_admin)],
+    summary=(
+        "Force re-subscription of Evolution to our backend webhook. "
+        "Use when the initial subscription on number creation failed (check "
+        "backend logs) or after Evolution's data was reset."
+    ),
+)
+async def post_rebind_webhook(
+    number_id: UUID,
+    db: DbSession,
+    current: CurrentUser,
+) -> dict:
+    return await rebind_webhook(db, current.organization_id, number_id)
 
 
 @router.patch(

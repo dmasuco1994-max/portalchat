@@ -1,4 +1,5 @@
 """WhatsApp number orchestration: keeps our DB in sync with Evolution instances."""
+import logging
 import secrets
 from datetime import datetime, timezone
 from uuid import UUID
@@ -18,14 +19,59 @@ from app.services.evolution import (
 )
 
 
+logger = logging.getLogger(__name__)
+
+
 def _generate_instance_name() -> str:
     return f"wp_{secrets.token_hex(6)}"
 
 
 def _webhook_callback_url(instance_name: str) -> str:
-    """The URL Evolution should POST to when events fire on this instance."""
     base = settings.public_backend_url.rstrip("/")
     return f"{base}/api/v1/webhooks/evolution/{instance_name}"
+
+
+def _phone_from_jid(jid: str | None) -> str | None:
+    if not jid:
+        return None
+    digits = "".join(ch for ch in jid.split("@")[0] if ch.isdigit())
+    return digits or None
+
+
+async def _try_capture_phone_from_evolution(
+    db: AsyncSession, number: WhatsAppNumber
+) -> bool:
+    """Best-effort lookup of the connected phone via /instance/fetchInstances.
+    Returns True if phone_number was updated.
+    """
+    try:
+        info = await evolution_client.fetch_instance_info(number.instance_name)
+    except EvolutionAPIError as exc:
+        logger.warning(
+            "fetch_instance_info failed for %s: %s",
+            number.instance_name,
+            exc.payload,
+        )
+        return False
+
+    if not info:
+        return False
+
+    candidates = (
+        info.get("ownerJid"),
+        info.get("owner"),
+        info.get("number"),
+        (info.get("instance") or {}).get("ownerJid"),
+        (info.get("instance") or {}).get("owner"),
+    )
+    for candidate in candidates:
+        phone = _phone_from_jid(candidate) if isinstance(candidate, str) else None
+        if phone:
+            if number.phone_number != phone:
+                number.phone_number = phone
+                return True
+            return False
+    return False
 
 
 async def list_numbers(
@@ -60,11 +106,36 @@ async def get_number(
 async def get_number_by_instance(
     db: AsyncSession, instance_name: str
 ) -> WhatsAppNumber | None:
-    """Lookup for the public webhook receiver (no tenant scoping yet)."""
     result = await db.execute(
         select(WhatsAppNumber).where(WhatsAppNumber.instance_name == instance_name)
     )
     return result.scalar_one_or_none()
+
+
+async def _subscribe_evolution_webhook(number: WhatsAppNumber) -> dict | None:
+    """Subscribe Evolution to our backend webhook for this instance.
+
+    Returns the Evolution response dict on success, None on failure (logs the error).
+    Does not raise — callers decide whether to surface the error.
+    """
+    url = _webhook_callback_url(number.instance_name)
+    try:
+        response = await evolution_client.set_webhook(number.instance_name, url=url)
+        logger.info(
+            "Webhook subscribed: instance=%s url=%s",
+            number.instance_name,
+            url,
+        )
+        return response
+    except EvolutionAPIError as exc:
+        logger.error(
+            "set_webhook FAILED for instance=%s url=%s status=%s payload=%s",
+            number.instance_name,
+            url,
+            exc.status_code,
+            exc.payload,
+        )
+        return None
 
 
 async def create_number(
@@ -101,19 +172,39 @@ async def create_number(
             detail=f"Evolution API rejected instance creation: {exc.payload}",
         ) from exc
 
-    # Subscribe Evolution to our backend webhook URL so we receive events.
-    try:
-        await evolution_client.set_webhook(
-            number.instance_name,
-            url=_webhook_callback_url(number.instance_name),
-        )
-    except EvolutionAPIError:
-        # Webhook config failure is non-fatal at create time — admin can rebind later.
-        pass
+    # Subscribe Evolution to our backend webhook URL.
+    # Failure here is non-fatal — admin can call POST /numbers/{id}/rebind-webhook
+    # to retry later. We log loudly so the failure is visible in container logs.
+    await _subscribe_evolution_webhook(number)
 
     await db.commit()
     await db.refresh(number)
     return number
+
+
+async def rebind_webhook(
+    db: AsyncSession, organization_id: UUID, number_id: UUID
+) -> dict:
+    """Force re-subscription of Evolution → our backend for this number.
+    Use when initial subscription failed (check container logs) or after
+    Evolution data was reset.
+    """
+    number = await get_number(db, organization_id, number_id)
+    response = await _subscribe_evolution_webhook(number)
+    if response is None:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=(
+                "Evolution rejected the webhook subscription. "
+                "Check backend logs for details."
+            ),
+        )
+    return {
+        "instance_name": number.instance_name,
+        "url": response.get("url"),
+        "events": response.get("events"),
+        "enabled": response.get("enabled"),
+    }
 
 
 async def fetch_qr(
@@ -163,13 +254,21 @@ async def sync_connection_status(
         or instance_section.get("status")
     )
     new_status = map_state_to_status(raw_state)
+    changed = False
+
     if new_status != number.status:
         number.status = new_status
+        changed = True
         if new_status == "connected":
             number.last_connected_at = datetime.now(timezone.utc)
-            phone = instance_section.get("owner") or instance_section.get("ownerJid")
-            if phone:
-                number.phone_number = "".join(ch for ch in phone if ch.isdigit())
+
+    # /instance/connectionState/ doesn't expose ownerJid, so when we believe
+    # we're connected but still missing the phone, hit /instance/fetchInstances.
+    if number.status == "connected" and not number.phone_number:
+        if await _try_capture_phone_from_evolution(db, number):
+            changed = True
+
+    if changed:
         await db.commit()
         await db.refresh(number)
 
@@ -220,14 +319,8 @@ async def update_webhook_config(
     number_id: UUID,
     payload: WebhookConfigUpdate,
 ) -> tuple[WhatsAppNumber, str | None]:
-    """Update CRM webhook config. Returns (number, plain_secret_or_none).
-
-    plain_secret is only returned on initial set or rotation; future GET calls
-    will not expose it.
-    """
     number = await get_number(db, organization_id, number_id)
 
-    # Clearing config
     if payload.url is None:
         number.webhook_url = None
         number.webhook_events = None

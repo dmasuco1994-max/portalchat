@@ -67,6 +67,23 @@ class EvolutionClient:
     async def delete_instance(self, instance_name: str) -> dict[str, Any]:
         return await self._request("DELETE", f"/instance/delete/{instance_name}")
 
+    async def fetch_instance_info(self, instance_name: str) -> dict[str, Any] | None:
+        """Returns Evolution's full record for an instance (incl. ownerJid).
+
+        Unlike /instance/connectionState/, this endpoint exposes the connected
+        WhatsApp account (ownerJid → phone digits + @s.whatsapp.net).
+        """
+        result = await self._request(
+            "GET",
+            "/instance/fetchInstances",
+            params={"instanceName": instance_name},
+        )
+        if isinstance(result, list):
+            return result[0] if result else None
+        if isinstance(result, dict):
+            return result
+        return None
+
     # ---- Webhook configuration -----------------------------------------
     async def set_webhook(
         self,

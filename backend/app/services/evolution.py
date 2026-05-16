@@ -149,6 +149,74 @@ class EvolutionClient:
             "POST", f"/message/sendText/{instance_name}", json=body
         )
 
+    async def send_media(
+        self,
+        instance_name: str,
+        to_phone_digits: str,
+        *,
+        mediatype: str,  # "image" | "video" | "document"
+        mimetype: str,
+        media_base64: str,
+        caption: str | None = None,
+        file_name: str | None = None,
+    ) -> dict[str, Any]:
+        body: dict[str, Any] = {
+            "number": to_phone_digits,
+            "mediatype": mediatype,
+            "mimetype": mimetype,
+            "media": media_base64,
+        }
+        if caption:
+            body["caption"] = caption
+        if file_name:
+            body["fileName"] = file_name
+        return await self._request(
+            "POST", f"/message/sendMedia/{instance_name}", json=body
+        )
+
+    async def send_audio(
+        self,
+        instance_name: str,
+        to_phone_digits: str,
+        *,
+        audio_base64: str,
+    ) -> dict[str, Any]:
+        """Send as a WhatsApp voice note (PTT)."""
+        body = {
+            "number": to_phone_digits,
+            "audio": audio_base64,
+        }
+        return await self._request(
+            "POST",
+            f"/message/sendWhatsAppAudio/{instance_name}",
+            json=body,
+        )
+
+    # ---- Media retrieval ------------------------------------------------
+    async def fetch_media_base64(
+        self,
+        instance_name: str,
+        message_key: dict[str, Any],
+        *,
+        convert_to_mp4: bool = False,
+    ) -> dict[str, Any] | None:
+        """Decrypt and return a media message's bytes.
+
+        Evolution's endpoint returns `{base64, mimetype, fileName?}` on success.
+        Returns None if Evolution rejects (e.g. message expired from its store).
+        """
+        try:
+            return await self._request(
+                "POST",
+                f"/chat/getBase64FromMediaMessage/{instance_name}",
+                json={
+                    "message": {"key": message_key},
+                    "convertToMp4": convert_to_mp4,
+                },
+            )
+        except EvolutionAPIError:
+            return None
+
 
 evolution_client = EvolutionClient(
     base_url=settings.evolution_base_url,

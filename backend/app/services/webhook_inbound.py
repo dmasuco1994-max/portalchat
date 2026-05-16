@@ -44,49 +44,50 @@ def _extract_phone(jid: str | None) -> str | None:
 
 def _extract_content(
     message_payload: dict[str, Any] | None,
-) -> tuple[str, str | None, str | None]:
-    """Returns (content_type, text or None, media_url or None).
+) -> tuple[str, str | None, str | None, str | None]:
+    """Returns (content_type, text|None, media_url|None, mimetype|None).
 
     Media URLs are the raw WhatsApp CDN links Baileys puts in the event. They
     require the `mediaKey` plus AES-CBC + HMAC decryption to actually serve the
-    bytes — we store them as a hint for later media-proxy work and so the
-    frontend can show \"image attachment\" affordances even if it can't render
-    the bytes yet.
+    bytes — we store them as a hint, but the actual serving happens through
+    `GET /messages/{id}/media` which proxies + caches via Evolution.
     """
     if not message_payload:
-        return "unknown", None, None
+        return "unknown", None, None, None
 
     if "conversation" in message_payload:
-        return "text", message_payload["conversation"], None
+        return "text", message_payload["conversation"], None, None
     if "extendedTextMessage" in message_payload:
-        return "text", message_payload["extendedTextMessage"].get("text"), None
+        return "text", message_payload["extendedTextMessage"].get("text"), None, None
     if "imageMessage" in message_payload:
         m = message_payload["imageMessage"]
-        return "image", m.get("caption"), m.get("url")
+        return "image", m.get("caption"), m.get("url"), m.get("mimetype")
     if "videoMessage" in message_payload:
         m = message_payload["videoMessage"]
-        return "video", m.get("caption"), m.get("url")
+        return "video", m.get("caption"), m.get("url"), m.get("mimetype")
     if "audioMessage" in message_payload:
-        return "audio", None, message_payload["audioMessage"].get("url")
+        m = message_payload["audioMessage"]
+        return "audio", None, m.get("url"), m.get("mimetype")
     if "documentMessage" in message_payload:
         m = message_payload["documentMessage"]
-        return "document", m.get("fileName"), m.get("url")
+        return "document", m.get("fileName"), m.get("url"), m.get("mimetype")
     if "stickerMessage" in message_payload:
-        return "sticker", None, message_payload["stickerMessage"].get("url")
+        m = message_payload["stickerMessage"]
+        return "sticker", None, m.get("url"), m.get("mimetype")
     if "locationMessage" in message_payload:
-        return "location", None, None
+        return "location", None, None, None
     if "contactMessage" in message_payload or "contactsArrayMessage" in message_payload:
-        return "contact", None, None
+        return "contact", None, None, None
     if "reactionMessage" in message_payload:
-        return "reaction", message_payload["reactionMessage"].get("text"), None
-    return "unknown", None, None
+        return "reaction", message_payload["reactionMessage"].get("text"), None, None
+    return "unknown", None, None, None
 
 
 def _extract_text_and_type(
     message_payload: dict[str, Any] | None,
 ) -> tuple[str, str | None]:
     """Backwards-compatible 2-tuple wrapper around _extract_content."""
-    ct, text, _ = _extract_content(message_payload)
+    ct, text, _, _ = _extract_content(message_payload)
     return ct, text
 
 
@@ -557,7 +558,9 @@ async def _handle_message_upsert(
         db, number, remote_jid, push_name=data.get("pushName")
     )
 
-    content_type, text, media_url = _extract_content(data.get("message"))
+    content_type, text, media_url, media_mimetype = _extract_content(
+        data.get("message")
+    )
     timestamp = data.get("messageTimestamp")
     if isinstance(timestamp, (int, float)):
         sent_at = datetime.fromtimestamp(timestamp, tz=timezone.utc)
@@ -584,6 +587,7 @@ async def _handle_message_upsert(
         content_type=content_type,
         content_text=text,
         media_url=media_url,
+        media_mimetype=media_mimetype,
         raw_payload=full_payload,
         status="delivered" if direction == "inbound" else "sent",
         sent_at=sent_at,

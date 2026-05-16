@@ -96,6 +96,7 @@ export interface Message {
   content_type: MessageContentType;
   content_text: string | null;
   media_url: string | null;
+  media_mimetype: string | null;
   status: MessageDeliveryStatus;
   sent_at: string;
   created_at: string;

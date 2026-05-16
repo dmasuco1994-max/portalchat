@@ -93,8 +93,10 @@ services:
       EVOLUTION_API_KEY: ${EVOLUTION_API_KEY}
       SECRET_KEY: ${SECRET_KEY}
       ENVIRONMENT: ${ENVIRONMENT:-development}
+      MEDIA_CACHE_DIR: /app/media-cache
     volumes:
       - ./backend:/app
+      - media_cache:/app/media-cache
     depends_on:
       postgres:
         condition: service_healthy
@@ -159,6 +161,7 @@ volumes:
   evolution_instances:
   frontend_node_modules:
   frontend_next:
+  media_cache:
 
 networks:
   portal_net:

@@ -4,15 +4,17 @@ import {
   Check,
   CheckCheck,
   Clock,
-  FileText,
-  ImageIcon,
   MapPin,
-  Mic,
-  Sticker,
   UserSquare,
-  Video,
 } from "lucide-react";
 
+import {
+  MediaAudio,
+  MediaDocument,
+  MediaImage,
+  MediaSticker,
+  MediaVideo,
+} from "@/components/conversations/media-blob";
 import { cn } from "@/lib/utils";
 import type { Message } from "@/lib/api/types";
 
@@ -38,8 +40,6 @@ function StatusIcon({ status }: { status: Message["status"] }) {
   }
 }
 
-// Matches strings made entirely of emoji + whitespace. Used to "jumbo-ize"
-// 1-3 emoji messages (WhatsApp does the same).
 const EMOJI_ONLY_REGEX =
   /^(?:\s|\p{Extended_Pictographic}|\p{Emoji_Component}|️|‍)+$/u;
 
@@ -48,7 +48,6 @@ function isEmojiOnly(text: string | null | undefined): boolean {
   const trimmed = text.trim();
   if (!trimmed) return false;
   if (!EMOJI_ONLY_REGEX.test(trimmed)) return false;
-  // Count grapheme clusters to cap "jumbo" at ~3 emojis.
   const segmenter =
     typeof Intl !== "undefined" && "Segmenter" in Intl
       ? new Intl.Segmenter(undefined, { granularity: "grapheme" })
@@ -59,45 +58,48 @@ function isEmojiOnly(text: string | null | undefined): boolean {
   return count <= 3;
 }
 
-const TYPE_LABEL_AND_ICON: Record<
-  Message["content_type"],
-  { label: string; Icon: React.ComponentType<{ className?: string }> }
-> = {
-  text: { label: "Texto", Icon: () => null },
-  image: { label: "Imagen", Icon: ImageIcon },
-  video: { label: "Video", Icon: Video },
-  audio: { label: "Audio", Icon: Mic },
-  document: { label: "Documento", Icon: FileText },
-  sticker: { label: "Sticker", Icon: Sticker },
-  location: { label: "Ubicación", Icon: MapPin },
-  contact: { label: "Contacto", Icon: UserSquare },
-  reaction: { label: "Reacción", Icon: () => null },
-  unknown: { label: "Mensaje", Icon: () => null },
-};
-
-function MediaPlaceholder({ message }: { message: Message }) {
-  const { label, Icon } = TYPE_LABEL_AND_ICON[message.content_type];
-  return (
-    <div className="flex items-center gap-2 rounded-md bg-background/40 px-3 py-2 text-sm">
-      <Icon className="size-4 shrink-0" />
-      <div className="min-w-0">
-        <p className="font-medium">{label}</p>
-        {message.content_text && (
-          <p className="truncate text-xs opacity-80">{message.content_text}</p>
-        )}
-        {!message.content_text && message.content_type === "audio" && (
-          <p className="text-xs opacity-70">Nota de voz</p>
-        )}
-      </div>
-    </div>
-  );
+function MediaBody({ message }: { message: Message }) {
+  switch (message.content_type) {
+    case "image":
+      return <MediaImage messageId={message.id} alt={message.content_text ?? "Imagen"} />;
+    case "sticker":
+      return <MediaSticker messageId={message.id} />;
+    case "video":
+      return <MediaVideo messageId={message.id} />;
+    case "audio":
+      return <MediaAudio messageId={message.id} />;
+    case "document":
+      return (
+        <MediaDocument
+          messageId={message.id}
+          fileName={message.content_text}
+        />
+      );
+    case "location":
+      return (
+        <div className="flex items-center gap-2 rounded-md bg-background/40 px-3 py-2 text-sm">
+          <MapPin className="size-4" />
+          <span>Ubicación</span>
+        </div>
+      );
+    case "contact":
+      return (
+        <div className="flex items-center gap-2 rounded-md bg-background/40 px-3 py-2 text-sm">
+          <UserSquare className="size-4" />
+          <span>Contacto compartido</span>
+        </div>
+      );
+    default:
+      return (
+        <p className="italic text-sm opacity-70">[mensaje no soportado]</p>
+      );
+  }
 }
 
 export function MessageBubble({ message }: { message: Message }) {
   const isOutbound = message.direction === "outbound";
   const isReaction = message.content_type === "reaction";
 
-  // Reactions render as a tiny floating chip, not a full bubble.
   if (isReaction && message.content_text) {
     return (
       <div className={cn("flex", isOutbound ? "justify-end" : "justify-start")}>
@@ -110,6 +112,31 @@ export function MessageBubble({ message }: { message: Message }) {
 
   const isText = message.content_type === "text";
   const jumbo = isText && isEmojiOnly(message.content_text);
+
+  // Sticker / image / video without caption → render the media bare with the
+  // timestamp underneath, no bubble background.
+  const isBareMedia =
+    (message.content_type === "sticker" ||
+      message.content_type === "image" ||
+      message.content_type === "video") &&
+    !message.content_text;
+
+  if (isBareMedia) {
+    return (
+      <div
+        className={cn(
+          "flex flex-col gap-1",
+          isOutbound ? "items-end" : "items-start"
+        )}
+      >
+        <MediaBody message={message} />
+        <div className="flex items-center gap-1 px-1 text-[10px] text-muted-foreground">
+          <span>{timeLabel(message.sent_at)}</span>
+          {isOutbound && <StatusIcon status={message.status} />}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className={cn("flex", isOutbound ? "justify-end" : "justify-start")}>
@@ -134,16 +161,16 @@ export function MessageBubble({ message }: { message: Message }) {
             </p>
           )
         ) : (
-          <>
-            <MediaPlaceholder message={message} />
+          <div className="space-y-2">
+            <MediaBody message={message} />
             {message.content_text &&
-              message.content_type !== "image" &&
-              message.content_type !== "video" && (
-                <p className="mt-1 whitespace-pre-wrap break-words">
+              (message.content_type === "image" ||
+                message.content_type === "video") && (
+                <p className="whitespace-pre-wrap break-words text-sm">
                   {message.content_text}
                 </p>
               )}
-          </>
+          </div>
         )}
         {!jumbo && (
           <div

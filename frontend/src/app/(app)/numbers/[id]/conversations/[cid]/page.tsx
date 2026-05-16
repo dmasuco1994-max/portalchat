@@ -8,7 +8,7 @@ import { ArrowLeft, Phone } from "lucide-react";
 import { useAuth } from "@/components/providers/auth-provider";
 import { ContactAvatar } from "@/components/conversations/contact-avatar";
 import { MessageBubble } from "@/components/conversations/message-bubble";
-import { SendTextForm } from "@/components/conversations/send-text-form";
+import { SendComposer } from "@/components/conversations/send-composer";
 import { Skeleton } from "@/components/ui/skeleton";
 import type { Conversation } from "@/lib/api/types";
 import { useConversations, useMessages } from "@/lib/hooks/use-conversations";
@@ -121,7 +121,7 @@ export default function ConversationViewerPage({
         ))}
       </div>
 
-      <SendTextForm
+      <SendComposer
         numberId={id}
         conversationId={cid}
         recipientDigits={conversation ? recipientDigits(conversation) : ""}

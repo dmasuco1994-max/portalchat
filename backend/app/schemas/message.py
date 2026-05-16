@@ -27,6 +27,7 @@ class MessageRead(BaseModel):
     content_type: ContentType
     content_text: str | None
     media_url: str | None
+    media_mimetype: str | None
     status: MessageStatus
     sent_at: datetime
     created_at: datetime

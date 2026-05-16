@@ -6,6 +6,7 @@ from app.api.v1 import (
     conversations,
     health,
     integrations,
+    media,
     messages,
     numbers,
     users,
@@ -21,3 +22,4 @@ api_router.include_router(conversations.router)
 api_router.include_router(messages.router)
 api_router.include_router(webhooks.router)
 api_router.include_router(integrations.router)
+api_router.include_router(media.router)

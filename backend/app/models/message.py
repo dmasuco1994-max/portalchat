@@ -84,6 +84,9 @@ class Message(UUIDPkMixin, TimestampMixin, Base):
     )
     content_text: Mapped[str | None] = mapped_column(Text, nullable=True)
     media_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    # Captured at ingest so /messages/{id}/media can serve with the right
+    # Content-Type without re-parsing the raw payload on every request.
+    media_mimetype: Mapped[str | None] = mapped_column(String(80), nullable=True)
 
     # Full Evolution payload, kept for media handling and debugging.
     raw_payload: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)

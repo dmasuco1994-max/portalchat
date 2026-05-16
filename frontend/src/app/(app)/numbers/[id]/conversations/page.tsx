@@ -2,16 +2,12 @@
 
 import Link from "next/link";
 import { use } from "react";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, MessageCircle } from "lucide-react";
 
+import { EmptyState } from "@/components/app/empty-state";
+import { PageHeader } from "@/components/app/page-header";
 import { ConversationListItem } from "@/components/conversations/conversation-list-item";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { Skeleton } from "@/components/ui/skeleton";
 import { useNumber } from "@/lib/hooks/use-numbers";
 import { useConversations } from "@/lib/hooks/use-conversations";
 
@@ -25,50 +21,40 @@ export default function ConversationsPage({
   const conversationsQuery = useConversations(id);
 
   return (
-    <div className="space-y-6">
+    <div>
       <Link
         href={`/numbers/${id}`}
-        className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:underline"
+        className="mb-4 inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
       >
         <ArrowLeft className="size-4" />
-        Back to number
+        Volver al número
       </Link>
 
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight">
-          {numberQuery.data?.name ?? "Conversations"}
-        </h1>
-        <p className="text-sm text-muted-foreground">
-          Most recently active first.
-        </p>
-      </div>
+      <PageHeader
+        title={numberQuery.data?.name ?? "Conversaciones"}
+        description="Ordenadas por actividad más reciente. Polling cada 5 segundos."
+      />
 
       {conversationsQuery.isPending && (
-        <p className="text-sm text-muted-foreground">Loading conversations…</p>
+        <div className="grid gap-2">
+          {Array.from({ length: 4 }).map((_, i) => (
+            <Skeleton key={i} className="h-[68px] w-full rounded-xl" />
+          ))}
+        </div>
       )}
 
       {conversationsQuery.error && (
-        <Card>
-          <CardHeader>
-            <CardTitle>Couldn&apos;t load conversations</CardTitle>
-            <CardDescription>
-              {conversationsQuery.error.message}
-            </CardDescription>
-          </CardHeader>
-        </Card>
+        <p className="text-sm text-destructive">
+          {conversationsQuery.error.message}
+        </p>
       )}
 
       {conversationsQuery.data && conversationsQuery.data.length === 0 && (
-        <Card>
-          <CardHeader>
-            <CardTitle>No conversations yet</CardTitle>
-            <CardDescription>
-              Once a contact sends a message to this number, it&apos;ll show up
-              here.
-            </CardDescription>
-          </CardHeader>
-          <CardContent />
-        </Card>
+        <EmptyState
+          icon={<MessageCircle className="size-6" />}
+          title="Todavía no hay conversaciones"
+          description="Cuando un contacto le escriba a este número por WhatsApp, va a aparecer acá automáticamente."
+        />
       )}
 
       {conversationsQuery.data && conversationsQuery.data.length > 0 && (

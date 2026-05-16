@@ -6,8 +6,9 @@ import { Toaster } from "@/components/ui/sonner";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "WhatsApp Portal",
-  description: "Multi-tenant WhatsApp gateway portal.",
+  title: "Portal.chat — WhatsApp Business para tu CRM",
+  description:
+    "Conectá tus números de WhatsApp Business a tu CRM. Multi-tenant, multi-número, integraciones nativas con Neotel, apiwha y custom JSON.",
 };
 
 export default function RootLayout({

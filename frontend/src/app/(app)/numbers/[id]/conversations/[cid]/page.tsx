@@ -3,18 +3,12 @@
 import * as React from "react";
 import Link from "next/link";
 import { use } from "react";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, Phone } from "lucide-react";
 
 import { useAuth } from "@/components/providers/auth-provider";
 import { MessageBubble } from "@/components/conversations/message-bubble";
 import { SendTextForm } from "@/components/conversations/send-text-form";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { Skeleton } from "@/components/ui/skeleton";
 import type { Conversation } from "@/lib/api/types";
 import { useConversations, useMessages } from "@/lib/hooks/use-conversations";
 import { useNumber } from "@/lib/hooks/use-numbers";
@@ -29,6 +23,15 @@ function headerLabel(c: Conversation): string {
   if (c.remote_name) return c.remote_name;
   if (c.remote_phone) return `+${c.remote_phone}`;
   return c.remote_jid;
+}
+
+function avatarInitials(label: string): string {
+  return label
+    .split(/[\s@.]+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((s) => s[0]?.toUpperCase())
+    .join("");
 }
 
 export default function ConversationViewerPage({
@@ -46,8 +49,6 @@ export default function ConversationViewerPage({
 
   const conversation = conversationsQuery.data?.find((c) => c.id === cid);
 
-  // Backend returns newest first (limit-paginated). Reverse for chat layout
-  // (oldest at the top, newest at the bottom).
   const ordered = React.useMemo(() => {
     if (!messagesQuery.data) return [];
     return [...messagesQuery.data].reverse();
@@ -65,56 +66,60 @@ export default function ConversationViewerPage({
   const numberStatus = numberQuery.data?.status;
   const sendDisabled = !canSend || numberStatus !== "connected" || !conversation;
   const disabledReason = !canSend
-    ? "Only owners and admins can send messages."
+    ? "Solo los owners y admins pueden mandar mensajes."
     : numberStatus !== "connected"
-      ? "This number is not connected — pair it before sending."
+      ? "El número no está conectado — pareálo antes de mandar."
       : !conversation
-        ? "Conversation not loaded yet."
+        ? "Cargando conversación…"
         : undefined;
 
+  const headerName = conversation ? headerLabel(conversation) : "Conversación";
+
   return (
-    <div className="flex h-[calc(100vh-8rem)] flex-col">
-      <div className="flex items-center justify-between gap-4 border-b pb-3">
-        <div className="min-w-0">
-          <Link
-            href={`/numbers/${id}/conversations`}
-            className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:underline"
-          >
-            <ArrowLeft className="size-4" />
-            Back to conversations
-          </Link>
-          <h1 className="mt-1 truncate text-xl font-semibold tracking-tight">
-            {conversation ? headerLabel(conversation) : "Conversation"}
+    <div className="-mx-6 -my-8 flex h-[calc(100vh-0px)] flex-col lg:-mx-10">
+      <header className="flex items-center gap-4 border-b bg-card px-6 py-4 lg:px-10">
+        <Link
+          href={`/numbers/${id}/conversations`}
+          className="flex size-9 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground"
+          aria-label="Volver"
+        >
+          <ArrowLeft className="size-4" />
+        </Link>
+        <span className="flex size-10 items-center justify-center rounded-full bg-brand-gradient text-sm font-semibold text-white">
+          {avatarInitials(headerName)}
+        </span>
+        <div className="min-w-0 flex-1">
+          <h1 className="truncate text-base font-semibold leading-tight">
+            {headerName}
           </h1>
           {conversation?.remote_phone && (
-            <p className="truncate text-sm text-muted-foreground">
-              +{conversation.remote_phone}
+            <p className="flex items-center gap-1 truncate text-xs text-muted-foreground">
+              <Phone className="size-3" />
+              <span className="font-mono">+{conversation.remote_phone}</span>
             </p>
           )}
         </div>
-      </div>
+      </header>
 
       <div
         ref={scrollerRef}
-        className="flex-1 space-y-2 overflow-y-auto bg-muted/20 p-4"
+        className="flex-1 space-y-2 overflow-y-auto bg-muted/30 px-6 py-6 lg:px-10"
       >
         {messagesQuery.isPending && (
-          <p className="text-center text-sm text-muted-foreground">
-            Loading messages…
-          </p>
+          <div className="space-y-3">
+            <Skeleton className="ml-auto h-10 w-2/3 rounded-2xl" />
+            <Skeleton className="h-10 w-1/2 rounded-2xl" />
+            <Skeleton className="ml-auto h-10 w-3/4 rounded-2xl" />
+          </div>
         )}
         {messagesQuery.error && (
-          <Card>
-            <CardHeader>
-              <CardTitle>Couldn&apos;t load messages</CardTitle>
-              <CardDescription>{messagesQuery.error.message}</CardDescription>
-            </CardHeader>
-            <CardContent />
-          </Card>
+          <p className="text-center text-sm text-destructive">
+            {messagesQuery.error.message}
+          </p>
         )}
         {ordered.length === 0 && !messagesQuery.isPending && (
           <p className="text-center text-sm text-muted-foreground">
-            No messages in this conversation yet.
+            Todavía no hay mensajes en esta conversación.
           </p>
         )}
         {ordered.map((m) => (

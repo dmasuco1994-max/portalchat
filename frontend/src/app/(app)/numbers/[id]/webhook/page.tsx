@@ -5,6 +5,8 @@ import { use } from "react";
 import { ArrowLeft } from "lucide-react";
 
 import { useAuth } from "@/components/providers/auth-provider";
+import { PageHeader } from "@/components/app/page-header";
+import { Skeleton } from "@/components/ui/skeleton";
 import { DeliveriesTable } from "@/components/webhook/deliveries-table";
 import { WebhookForm } from "@/components/webhook/webhook-form";
 import {
@@ -33,32 +35,31 @@ export default function WebhookPage({
     <div className="space-y-6">
       <Link
         href={`/numbers/${id}`}
-        className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:underline"
+        className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
       >
         <ArrowLeft className="size-4" />
-        Back to number
+        Volver al número
       </Link>
 
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight">Webhook</h1>
-        <p className="text-sm text-muted-foreground">
-          {numberQuery.data?.name ?? "Number"}
-        </p>
-      </div>
+      <PageHeader
+        title="Webhook"
+        description={numberQuery.data?.name ?? "Número"}
+      />
 
       {!canManage && (
         <Card>
           <CardHeader>
-            <CardTitle>Read-only</CardTitle>
+            <CardTitle>Solo lectura</CardTitle>
             <CardDescription>
-              Only owners and admins can edit the webhook configuration.
+              Solo los owners y admins pueden editar la configuración del
+              webhook.
             </CardDescription>
           </CardHeader>
         </Card>
       )}
 
       {numberQuery.isPending && (
-        <p className="text-sm text-muted-foreground">Loading…</p>
+        <Skeleton className="h-[400px] w-full rounded-xl" />
       )}
 
       {numberQuery.data && canManage && (
@@ -68,15 +69,15 @@ export default function WebhookPage({
       {numberQuery.data && !canManage && numberQuery.data.webhook_url && (
         <Card>
           <CardHeader>
-            <CardTitle>Current configuration</CardTitle>
+            <CardTitle>Configuración actual</CardTitle>
             <CardDescription>
               <span className="break-all font-mono">{numberQuery.data.webhook_url}</span>
             </CardDescription>
           </CardHeader>
           <CardContent className="text-sm">
             <p>
-              Status:{" "}
-              {numberQuery.data.webhook_active ? "Active" : "Paused"}
+              Estado:{" "}
+              {numberQuery.data.webhook_active ? "Activo" : "Pausado"}
             </p>
             <p className="text-muted-foreground">
               Events:{" "}

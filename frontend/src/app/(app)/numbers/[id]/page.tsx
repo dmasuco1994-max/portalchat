@@ -8,6 +8,7 @@ import { ArrowLeft, MessageSquare, PhoneOff, Trash2, Webhook } from "lucide-reac
 import { toast } from "sonner";
 
 import { useAuth } from "@/components/providers/auth-provider";
+import { PageHeader } from "@/components/app/page-header";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { QrDisplay } from "@/components/numbers/qr-display";
 import { StatusBadge } from "@/components/numbers/status-badge";
@@ -80,57 +81,64 @@ export default function NumberDetailPage({
   const number = numberQuery.data;
 
   return (
-    <div className="space-y-6">
+    <div>
       <Link
         href="/dashboard"
-        className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:underline"
+        className="mb-4 inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
       >
         <ArrowLeft className="size-4" />
-        Back to numbers
+        Volver a números
       </Link>
 
-      <div className="flex flex-wrap items-start justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight">{number.name}</h1>
-          <div className="mt-1 flex items-center gap-2">
-            {effectiveStatus && <StatusBadge status={effectiveStatus} />}
-            {number.phone_number && (
-              <span className="text-sm text-muted-foreground">
-                +{number.phone_number}
-              </span>
+      <PageHeader
+        title={number.name}
+        description={
+          <span className="inline-flex items-center gap-2">
+            {effectiveStatus && (
+              <StatusBadge status={effectiveStatus} pulse />
             )}
-          </div>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <Button asChild variant="outline">
-            <Link href={`/numbers/${id}/conversations`}>
-              <MessageSquare className="size-4" />
-              Conversations
-            </Link>
-          </Button>
-          <Button asChild variant="outline">
-            <Link href={`/numbers/${id}/webhook`}>
-              <Webhook className="size-4" />
-              Webhook
-            </Link>
-          </Button>
-          {canManage && isConnected && (
-            <Button variant="outline" onClick={() => setConfirmDisconnect(true)}>
-              <PhoneOff className="size-4" />
-              Disconnect
+            {number.phone_number ? (
+              <span className="font-mono text-sm">+{number.phone_number}</span>
+            ) : (
+              <span className="text-sm">Sin pairear</span>
+            )}
+          </span>
+        }
+        actions={
+          <>
+            <Button asChild variant="outline">
+              <Link href={`/numbers/${id}/conversations`}>
+                <MessageSquare className="size-4" />
+                Conversaciones
+              </Link>
             </Button>
-          )}
-          {canManage && (
-            <Button
-              variant="destructive"
-              onClick={() => setConfirmDelete(true)}
-            >
-              <Trash2 className="size-4" />
-              Delete
+            <Button asChild variant="outline">
+              <Link href={`/numbers/${id}/webhook`}>
+                <Webhook className="size-4" />
+                Webhook
+              </Link>
             </Button>
-          )}
-        </div>
-      </div>
+            {canManage && isConnected && (
+              <Button
+                variant="outline"
+                onClick={() => setConfirmDisconnect(true)}
+              >
+                <PhoneOff className="size-4" />
+                Desconectar
+              </Button>
+            )}
+            {canManage && (
+              <Button
+                variant="destructive"
+                onClick={() => setConfirmDelete(true)}
+              >
+                <Trash2 className="size-4" />
+                Eliminar
+              </Button>
+            )}
+          </>
+        }
+      />
 
       {!isConnected && !isFailed && canManage && (
         <QrDisplay
@@ -143,9 +151,10 @@ export default function NumberDetailPage({
       {!isConnected && !isFailed && !canManage && (
         <Card>
           <CardHeader>
-            <CardTitle>Waiting for an admin</CardTitle>
+            <CardTitle>Esperando a un admin</CardTitle>
             <CardDescription>
-              Only owners and admins can scan the QR to pair this number.
+              Solo los owners y admins pueden escanear el QR para parear este
+              número.
             </CardDescription>
           </CardHeader>
         </Card>
@@ -154,25 +163,33 @@ export default function NumberDetailPage({
       {isConnected && (
         <Card>
           <CardHeader>
-            <CardTitle>Paired</CardTitle>
+            <CardTitle>Conectado</CardTitle>
             <CardDescription>
-              This line is live and receiving messages.
+              Esta línea está activa y recibiendo mensajes.
             </CardDescription>
           </CardHeader>
-          <CardContent className="space-y-1 text-sm">
-            <p>
-              <span className="text-muted-foreground">Phone:</span>{" "}
-              <span className="font-mono">+{number.phone_number ?? "—"}</span>
-            </p>
-            <p>
-              <span className="text-muted-foreground">Instance:</span>{" "}
-              <span className="font-mono">{number.instance_name}</span>
-            </p>
-            {number.last_connected_at && (
-              <p>
-                <span className="text-muted-foreground">Last connected:</span>{" "}
-                {new Date(number.last_connected_at).toLocaleString()}
+          <CardContent className="grid gap-2 text-sm sm:grid-cols-2">
+            <div>
+              <p className="text-xs uppercase tracking-wide text-muted-foreground">
+                Teléfono
               </p>
+              <p className="mt-0.5 font-mono">+{number.phone_number ?? "—"}</p>
+            </div>
+            <div>
+              <p className="text-xs uppercase tracking-wide text-muted-foreground">
+                Instancia
+              </p>
+              <p className="mt-0.5 font-mono">{number.instance_name}</p>
+            </div>
+            {number.last_connected_at && (
+              <div className="sm:col-span-2">
+                <p className="text-xs uppercase tracking-wide text-muted-foreground">
+                  Última conexión
+                </p>
+                <p className="mt-0.5">
+                  {new Date(number.last_connected_at).toLocaleString()}
+                </p>
+              </div>
             )}
           </CardContent>
         </Card>
@@ -181,10 +198,10 @@ export default function NumberDetailPage({
       {isFailed && (
         <Card>
           <CardHeader>
-            <CardTitle>Connection failed</CardTitle>
+            <CardTitle>La conexión falló</CardTitle>
             <CardDescription>
-              Evolution returned an error. Delete and recreate the number to
-              start over.
+              Evolution devolvió un error. Eliminá el número y volvelo a crear
+              para empezar de nuevo.
             </CardDescription>
           </CardHeader>
         </Card>
@@ -193,18 +210,20 @@ export default function NumberDetailPage({
       <ConfirmDialog
         open={confirmDisconnect}
         onOpenChange={setConfirmDisconnect}
-        title={`Disconnect "${number.name}"?`}
-        description="The Evolution instance keeps running. You can scan a new QR to reconnect."
-        confirmLabel="Disconnect"
+        title={`¿Desconectar "${number.name}"?`}
+        description="La instancia de Evolution sigue corriendo. Podés escanear un nuevo QR para reconectar."
+        confirmLabel="Desconectar"
         loading={disconnect.isPending}
         destructive
         onConfirm={async () => {
           try {
             await disconnect.mutateAsync();
-            toast.success("Disconnected");
+            toast.success("Desconectado");
             setConfirmDisconnect(false);
           } catch (e) {
-            toast.error(e instanceof Error ? e.message : "Could not disconnect");
+            toast.error(
+              e instanceof Error ? e.message : "No pudimos desconectar"
+            );
           }
         }}
       />
@@ -212,19 +231,19 @@ export default function NumberDetailPage({
       <ConfirmDialog
         open={confirmDelete}
         onOpenChange={setConfirmDelete}
-        title={`Delete "${number.name}"?`}
-        description="This removes the WhatsApp number and its Evolution instance. Conversations stay in the database."
-        confirmLabel="Delete"
+        title={`¿Eliminar "${number.name}"?`}
+        description="Eliminamos el número y la instancia de Evolution. Las conversaciones quedan en la base."
+        confirmLabel="Eliminar"
         loading={remove.isPending}
         destructive
         onConfirm={async () => {
           try {
             await remove.mutateAsync();
-            toast.success("Deleted");
+            toast.success("Eliminado");
             setConfirmDelete(false);
             router.push("/dashboard");
           } catch (e) {
-            toast.error(e instanceof Error ? e.message : "Could not delete");
+            toast.error(e instanceof Error ? e.message : "No pudimos eliminar");
           }
         }}
       />

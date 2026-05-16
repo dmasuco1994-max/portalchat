@@ -28,6 +28,8 @@ interface AuthContextValue {
   login: (input: LoginInput) => Promise<void>;
   signup: (input: SignupInput) => Promise<void>;
   logout: () => Promise<void>;
+  /** Replace the in-memory user (e.g. after editing the own profile). */
+  setUser: (user: User) => void;
 }
 
 const AuthContext = React.createContext<AuthContextValue | null>(null);
@@ -149,7 +151,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [clearSession, router]);
 
   const value = React.useMemo<AuthContextValue>(
-    () => ({ status, user, login, signup, logout }),
+    () => ({ status, user, login, signup, logout, setUser }),
     [status, user, login, signup, logout]
   );
 

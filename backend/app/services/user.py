@@ -6,9 +6,14 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.security import hash_password
+from app.core.security import hash_password, verify_password
 from app.models.user import User
-from app.schemas.user import UserInvite, UserUpdate
+from app.schemas.user import (
+    ChangePasswordRequest,
+    UserInvite,
+    UserSelfUpdate,
+    UserUpdate,
+)
 
 
 async def list_users_in_org(
@@ -115,6 +120,40 @@ async def update_user(
     await db.commit()
     await db.refresh(user)
     return user
+
+
+async def update_self(
+    db: AsyncSession,
+    actor: User,
+    payload: UserSelfUpdate,
+) -> User:
+    """Self-service profile update. Cannot change own role or active flag
+    here — those are admin actions via /users/{id}."""
+    if payload.full_name is not None:
+        actor.full_name = payload.full_name
+    await db.commit()
+    await db.refresh(actor)
+    return actor
+
+
+async def change_self_password(
+    db: AsyncSession,
+    actor: User,
+    payload: ChangePasswordRequest,
+) -> None:
+    """Change own password. Requires the current password as proof."""
+    if not verify_password(payload.current_password, actor.password_hash):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="La contraseña actual no coincide",
+        )
+    if payload.current_password == payload.new_password:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="La contraseña nueva tiene que ser distinta",
+        )
+    actor.password_hash = hash_password(payload.new_password)
+    await db.commit()
 
 
 async def delete_user(

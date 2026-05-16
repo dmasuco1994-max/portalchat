@@ -1,26 +1,20 @@
 "use client";
 
 import * as React from "react";
-import { Users } from "lucide-react";
+import { Pencil, Users } from "lucide-react";
 import { toast } from "sonner";
 
 import { useAuth } from "@/components/providers/auth-provider";
 import { EmptyState } from "@/components/app/empty-state";
 import { PageHeader } from "@/components/app/page-header";
+import { EditUserDialog } from "@/components/team/edit-user-dialog";
 import { InviteUserDialog } from "@/components/team/invite-user-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import {
-  Card,
-  CardContent,
-} from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Skeleton } from "@/components/ui/skeleton";
-import {
-  useDeleteUser,
-  useTeam,
-  useUpdateUser,
-} from "@/lib/hooks/use-team";
+import { useDeleteUser, useTeam } from "@/lib/hooks/use-team";
 import type { Role, User } from "@/lib/api/types";
 
 const ROLE_LABEL: Record<Role, string> = {
@@ -38,11 +32,12 @@ const ROLE_VARIANT: Record<Role, React.ComponentProps<typeof Badge>["variant"]> 
 export default function TeamPage() {
   const { user: me } = useAuth();
   const { data, isPending, error } = useTeam();
-  const updateUser = useUpdateUser();
   const deleteUser = useDeleteUser();
 
   const isOwner = me?.role === "owner";
   const isAdmin = me?.role === "admin" || isOwner;
+
+  const [editing, setEditing] = React.useState<User | null>(null);
   const [confirmDelete, setConfirmDelete] = React.useState<User | null>(null);
 
   return (
@@ -61,9 +56,7 @@ export default function TeamPage() {
         </div>
       )}
 
-      {error && (
-        <p className="text-sm text-destructive">{error.message}</p>
-      )}
+      {error && <p className="text-sm text-destructive">{error.message}</p>}
 
       {data && data.length === 0 && (
         <EmptyState
@@ -86,6 +79,7 @@ export default function TeamPage() {
                   .slice(0, 2)
                   .map((s) => s[0]?.toUpperCase())
                   .join("");
+                const canEditThis = isAdmin && (isMe || isOwner || u.role !== "owner");
                 return (
                   <div
                     key={u.id}
@@ -117,47 +111,28 @@ export default function TeamPage() {
                         {u.email}
                       </p>
                     </div>
-                    {isAdmin && !isMe && (
-                      <div className="flex items-center gap-2">
-                        {isOwner && u.role !== "owner" && (
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            disabled={updateUser.isPending}
-                            onClick={async () => {
-                              try {
-                                await updateUser.mutateAsync({
-                                  id: u.id,
-                                  input: {
-                                    role:
-                                      u.role === "admin" ? "member" : "admin",
-                                  },
-                                });
-                                toast.success("Rol actualizado");
-                              } catch (e) {
-                                toast.error(
-                                  e instanceof Error ? e.message : "Falló"
-                                );
-                              }
-                            }}
-                          >
-                            {u.role === "admin"
-                              ? "Bajar a Member"
-                              : "Promover a Admin"}
-                          </Button>
-                        )}
-                        {isOwner && (
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="text-destructive hover:text-destructive"
-                            onClick={() => setConfirmDelete(u)}
-                          >
-                            Eliminar
-                          </Button>
-                        )}
-                      </div>
-                    )}
+                    <div className="flex items-center gap-1">
+                      {canEditThis && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => setEditing(u)}
+                        >
+                          <Pencil className="size-4" />
+                          Editar
+                        </Button>
+                      )}
+                      {isOwner && !isMe && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="text-destructive hover:text-destructive"
+                          onClick={() => setConfirmDelete(u)}
+                        >
+                          Eliminar
+                        </Button>
+                      )}
+                    </div>
                   </div>
                 );
               })}
@@ -165,6 +140,14 @@ export default function TeamPage() {
           </CardContent>
         </Card>
       )}
+
+      <EditUserDialog
+        user={editing}
+        open={!!editing}
+        onOpenChange={(open) => !open && setEditing(null)}
+        canChangeRole={!!isOwner}
+        isSelf={editing?.id === me?.id}
+      />
 
       <ConfirmDialog
         open={!!confirmDelete}

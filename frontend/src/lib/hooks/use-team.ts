@@ -7,11 +7,15 @@ import {
 } from "@tanstack/react-query";
 
 import {
+  changeMyPassword,
   deleteUser,
   inviteUser,
   listUsers,
+  updateMe,
   updateUser,
+  type ChangePasswordInput,
   type InviteInput,
+  type SelfUpdateInput,
   type UpdateUserInput,
 } from "@/lib/api/team";
 
@@ -43,5 +47,19 @@ export function useDeleteUser() {
   return useMutation({
     mutationFn: (id: string) => deleteUser(id),
     onSuccess: () => qc.invalidateQueries({ queryKey: KEY }),
+  });
+}
+
+export function useUpdateMe() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: SelfUpdateInput) => updateMe(input),
+    onSuccess: () => qc.invalidateQueries({ queryKey: KEY }),
+  });
+}
+
+export function useChangeMyPassword() {
+  return useMutation({
+    mutationFn: (input: ChangePasswordInput) => changeMyPassword(input),
   });
 }

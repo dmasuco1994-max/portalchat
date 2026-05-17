@@ -1,4 +1,5 @@
 """Application configuration loaded from environment variables."""
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -37,10 +38,24 @@ class Settings(BaseSettings):
     refresh_token_expire_days: int = 7
 
     # ---- CORS ------------------------------------------------------------
+    # Accepts CSV (CORS_ORIGINS=http://a,http://b) or JSON list. CSV is the
+    # ergonomic form for .env files on prod VMs where the portal is reached
+    # by IP (e.g. http://192.168.0.128:3000).
     cors_origins: list[str] = [
         "http://localhost:3000",
         "http://localhost:8000",
     ]
+
+    @field_validator("cors_origins", mode="before")
+    @classmethod
+    def _parse_cors_origins(cls, v):
+        if isinstance(v, str):
+            s = v.strip()
+            if s.startswith("["):
+                # Let pydantic handle JSON parsing.
+                return s
+            return [item.strip() for item in s.split(",") if item.strip()]
+        return v
 
 
 settings = Settings()

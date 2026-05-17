@@ -12,8 +12,12 @@ WORKDIR /app
 COPY requirements.txt ./
 RUN pip install -r requirements.txt
 
-# Copy application code
+# Copy application code + Alembic config so the image is self-sufficient
+# without a bind mount. (Dev still uses a bind mount that shadows this for
+# faster iteration; prod loads these files straight from the image.)
 COPY app ./app
+COPY alembic ./alembic
+COPY alembic.ini ./alembic.ini
 
 EXPOSE 8000
 

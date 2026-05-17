@@ -45,12 +45,17 @@ services:
     build:
       context: ./frontend
       dockerfile: Dockerfile.prod
+      # NEXT_PUBLIC_* must be passed as BUILD ARGS — Next.js inlines them into
+      # the client bundle at compile time, not runtime. Setting them only in
+      # `environment` below would leave them undefined in the browser.
+      args:
+        NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:?NEXT_PUBLIC_API_BASE_URL required in prod}
+        NEXT_PUBLIC_APP_URL: ${NEXT_PUBLIC_APP_URL:?NEXT_PUBLIC_APP_URL required in prod}
     volumes: []
     environment:
       NODE_ENV: production
+      # Server-side handlers (route handlers under /api/auth/*) read these at
+      # runtime, so they live here as regular env vars.
       BACKEND_INTERNAL_URL: http://backend:8000/api/v1
-      # IMPORTANT: set NEXT_PUBLIC_API_BASE_URL in .env to the VM's reachable
-      # hostname so the frontend callback URLs come out right
-      # (e.g. http://10.0.0.42:8000/api/v1).
-      NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:?NEXT_PUBLIC_API_BASE_URL required in prod}
-      NEXT_PUBLIC_APP_URL: ${NEXT_PUBLIC_APP_URL:?NEXT_PUBLIC_APP_URL required in prod}
+      NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL}
+      NEXT_PUBLIC_APP_URL: ${NEXT_PUBLIC_APP_URL}

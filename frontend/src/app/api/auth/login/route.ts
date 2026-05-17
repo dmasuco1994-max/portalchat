@@ -42,6 +42,6 @@ export async function POST(req: Request) {
     access_token: tokens.data.access_token,
     user: me.data,
   });
-  setRefreshCookie(res, tokens.data.refresh_token);
+  setRefreshCookie(res, tokens.data.refresh_token, req);
   return res;
 }

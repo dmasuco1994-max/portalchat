@@ -20,6 +20,6 @@ export async function POST(req: Request) {
   }
 
   const res = NextResponse.json({ ok: true });
-  clearRefreshCookie(res);
+  clearRefreshCookie(res, req);
   return res;
 }

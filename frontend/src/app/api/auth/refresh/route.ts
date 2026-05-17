@@ -14,7 +14,7 @@ interface TokenPair {
   token_type: string;
 }
 
-export async function POST() {
+export async function POST(req: Request) {
   const store = await cookies();
   const refreshToken = store.get(REFRESH_COOKIE_NAME)?.value;
   if (!refreshToken) {
@@ -31,7 +31,7 @@ export async function POST() {
       { error: tokens.error ?? "Refresh failed" },
       { status: tokens.status }
     );
-    clearRefreshCookie(res);
+    clearRefreshCookie(res, req);
     return res;
   }
 
@@ -43,7 +43,7 @@ export async function POST() {
       { error: me.error ?? "Could not load user" },
       { status: me.status }
     );
-    clearRefreshCookie(res);
+    clearRefreshCookie(res, req);
     return res;
   }
 
@@ -51,6 +51,6 @@ export async function POST() {
     access_token: tokens.data.access_token,
     user: me.data,
   });
-  setRefreshCookie(res, tokens.data.refresh_token);
+  setRefreshCookie(res, tokens.data.refresh_token, req);
   return res;
 }

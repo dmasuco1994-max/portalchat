@@ -27,9 +27,10 @@ services:
       LOG_LEVEL: ERROR,WARN
 
   backend:
-    # Drop the bind-mount from dev but KEEP the named media_cache volume —
-    # downloaded media persists across container restarts and image rebuilds.
-    volumes:
+    # !override replaces the inherited list entirely. Without it, Compose
+    # MERGES the base's `./backend:/app` bind mount into prod and the host
+    # filesystem ends up masking the image. We keep only the media cache.
+    volumes: !override
       - media_cache:/app/media-cache
     command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "2"]
     environment:
@@ -37,7 +38,7 @@ services:
       MEDIA_CACHE_DIR: /app/media-cache
 
   worker:
-    volumes: []
+    volumes: !reset null
     environment:
       ENVIRONMENT: production
 
@@ -51,7 +52,10 @@ services:
       args:
         NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:?NEXT_PUBLIC_API_BASE_URL required in prod}
         NEXT_PUBLIC_APP_URL: ${NEXT_PUBLIC_APP_URL:?NEXT_PUBLIC_APP_URL required in prod}
-    volumes: []
+    # The base compose mounts `./frontend:/app` and named volumes for HMR.
+    # In prod that masks /app/server.js produced by the standalone build.
+    # !reset nukes the inherited list so only the image's filesystem remains.
+    volumes: !reset null
     environment:
       NODE_ENV: production
       # Server-side handlers (route handlers under /api/auth/*) read these at

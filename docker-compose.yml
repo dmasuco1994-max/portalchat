@@ -94,6 +94,11 @@ services:
       SECRET_KEY: ${SECRET_KEY}
       ENVIRONMENT: ${ENVIRONMENT:-development}
       MEDIA_CACHE_DIR: /app/media-cache
+      # CSV of allowed origins for the SPA. Must include every host:port the
+      # browser uses to reach the portal (e.g. http://192.168.0.128:3000 in
+      # prod). Compose only forwards vars listed here — adding to .env alone
+      # is not enough.
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000}
     volumes:
       - ./backend:/app
       - media_cache:/app/media-cache

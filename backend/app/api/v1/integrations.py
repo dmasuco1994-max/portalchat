@@ -78,12 +78,18 @@ async def neotel_send(
             f"Body accountId ({payload.accountId}) does not match path ({account_id}).",
         )
 
-    # Look up the WhatsApp number by account_id + token. We use JSONB ->> casts
-    # so the match works regardless of which org owns the number — the token
-    # is the per-account secret.
+    # Look up the WhatsApp number by account_id + token. Same hybrid-mode
+    # rationale as the External Application endpoint: webhook_format controls
+    # how WE serialize outbound webhooks toward Neotel — it is independent of
+    # how Neotel sends agent replies back to US. A common setup is
+    # apiwha_neotel inbound (because Neotel CAPIWHA hardcodes the apiwha host
+    # for outbound to the provider, which we cannot override) paired with
+    # Custom Provider for the agent → provider direction (Custom Provider IS
+    # the documented Neotel mechanism for on-premise providers with an
+    # editable Host field). The shared secret (account_id + callback_token)
+    # is sufficient to identify the number.
     result = await db.execute(
         select(WhatsAppNumber).where(
-            WhatsAppNumber.webhook_format == "neotel_custom",
             WhatsAppNumber.webhook_extra["account_id"].astext == account_id,
             WhatsAppNumber.webhook_extra["callback_token"].astext == token,
         )

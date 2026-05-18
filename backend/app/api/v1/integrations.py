@@ -180,9 +180,16 @@ async def neotel_external_inbox(
     if is_inbound:
         return {"success": True, "noop": "isInbound=true is not an agent reply"}
 
+    # Identify the number by application_id + callback_token only. Do NOT
+    # filter by webhook_format — that field drives how we SERIALIZE outbound
+    # webhooks toward Neotel, and is independent of how Neotel sends agent
+    # replies back to us. A common setup is apiwha_neotel for inbound (because
+    # Neotel's CAPIWHA module hardcodes the apiwha host and we can't change
+    # what it sends to) paired with External Application for outbound (the
+    # only Neotel form that exposes the proxy URL field). Forcing
+    # webhook_format='external_neotel' here would block that pairing.
     result = await db.execute(
         select(WhatsAppNumber).where(
-            WhatsAppNumber.webhook_format == "external_neotel",
             WhatsAppNumber.webhook_extra["application_id"].astext == application_id,
             WhatsAppNumber.webhook_extra["callback_token"].astext == token,
         )

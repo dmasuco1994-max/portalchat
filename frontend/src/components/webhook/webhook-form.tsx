@@ -37,8 +37,13 @@ import { useUpdateWebhookConfig } from "@/lib/hooks/use-webhook";
 const APIWHA_DEFAULT_URL = "https://s2.neotel.us/NeoWebhook/api/ApiWha";
 const NEOTEL_CUSTOM_DEFAULT_URL =
   "https://s2.neotel.cc/neowebhook/api/CustomAccount/Messages/";
+// Live Neotel ExternalApplication host. The previous default
+// (webhook.neotel.com.ar/NeoWebhookTest) is a test-only host that no longer
+// resolves in DNS, so every outbound delivery failed with
+// "Name or service not known". s2.neotel.us is the reachable production host
+// (same host the apiwha/CAPIWHA path uses). Confirm yours with Neotel.
 const EXTERNAL_NEOTEL_DEFAULT_URL =
-  "https://webhook.neotel.com.ar/NeoWebhookTest/api/ExternalApplication/SendMessage";
+  "https://s2.neotel.us/NeoWebhook/api/ExternalApplication/SendMessage";
 
 const schema = z
   .object({
@@ -376,10 +381,10 @@ export function WebhookForm({ number }: { number: WhatsAppNumber }) {
                   )}
                   {isExternal && (
                     <FormDescription>
-                      Neotel&apos;s ExternalApplication endpoint. Default is
-                      the test env — swap <code>NeoWebhookTest</code> for the
-                      production path when you go live (ask Neotel for the
-                      exact prod URL).
+                      Neotel&apos;s ExternalApplication endpoint. Default points
+                      at the live host <code>s2.neotel.us</code>. If your
+                      account uses a different host, ask Neotel and replace it
+                      here.
                     </FormDescription>
                   )}
                   <FormMessage />

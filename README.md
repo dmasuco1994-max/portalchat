@@ -18,7 +18,7 @@ Multi-tenant WhatsApp gateway portal built on top of Evolution API.
 1. Copy environment variables and edit the secrets:
 
    ```powershell
-   Copy-Item .env.example .env
+   Copy-Item example.env .env
    ```
 
 2. Build and start all services:
@@ -99,6 +99,20 @@ For Neotel deployments on a private network where the user can deploy VMs
 internally but doesn't have shell on the Neotel server, **`external_neotel`
 is the only viable path** — the others all need filesystem or DNS
 modifications on the Neotel host.
+
+### Verified Neotel hosts (2026-06)
+
+DNS/HTTP checks against the public Neotel endpoints, so the dropdown defaults
+point at hosts that actually resolve:
+
+| Host | Status | Used by |
+|------|--------|---------|
+| `s2.neotel.us` | live (HTTP 200/405) | `apiwha_neotel` (`/NeoWebhook/api/ApiWha`), `external_neotel` (`/NeoWebhook/api/ExternalApplication/SendMessage`) |
+| `s2.neotel.cc` | live (HTTP 405) | `neotel_custom` (`/neowebhook/api/CustomAccount/Messages/{channel}`) |
+| `webhook.neotel.com.ar` | **dead — does not resolve** | old `external_neotel` default (test env); replaced |
+
+If your account uses a different host, confirm it with Neotel and override the
+URL in the number's Webhook page.
 
 ## Frontend auth model
 

@@ -204,6 +204,29 @@ docker volumes from the old host to the new VM before first start:
 6. Verify: send a WhatsApp from another phone → conversation should appear in
    Neotel within ~1-2 seconds. Agent reply → arrives at the WhatsApp phone.
 
+## Running tests
+
+Unit tests cover the pure webhook adapters (apiwha / neotel_custom /
+external_neotel) and the inbound helpers — no DB or network needed:
+
+```powershell
+docker compose exec backend pytest
+```
+
+## Optional: secure the Evolution inbound webhook
+
+The `POST /api/v1/webhooks/evolution/{instance}` endpoint has no auth by
+default (it trusts the random instance name + network). To require a shared
+secret, set `EVOLUTION_WEBHOOK_SECRET` in `.env`, then re-bind each number's
+webhook so Evolution picks up the new URL:
+
+```powershell
+# per number, after setting the secret
+curl -X POST http://<host>:8000/api/v1/numbers/<id>/rebind-webhook
+```
+
+When the var is unset (default), behavior is unchanged.
+
 ## Useful commands
 
 ```powershell

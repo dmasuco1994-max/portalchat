@@ -10,8 +10,9 @@ A future iteration could add a per-instance shared secret in a header.
 """
 from typing import Any
 
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, HTTPException, Query, status
 
+from app.core.config import settings
 from app.core.deps import ArqPool, DbSession
 from app.services.webhook_inbound import handle_evolution_event
 from app.services.whatsapp_number import get_number_by_instance
@@ -29,7 +30,16 @@ async def receive_evolution_event(
     payload: dict[str, Any],
     db: DbSession,
     arq_pool: ArqPool,
+    secret: str | None = Query(default=None),
 ) -> dict[str, Any]:
+    # Optional shared-secret gate. Only enforced when EVOLUTION_WEBHOOK_SECRET
+    # is configured; otherwise behaves exactly as before (no auth here).
+    expected = settings.evolution_webhook_secret
+    if expected and secret != expected:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or missing webhook secret",
+        )
     number = await get_number_by_instance(db, instance_name)
     if number is None:
         raise HTTPException(

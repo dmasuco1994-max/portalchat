@@ -287,8 +287,10 @@ conversación en segundos.
 1. Volvé a nuestro portal: número → "**Webhook**".
 2. **Format**: "Neotel External Application — bidirectional, self-service ⭐ RECOMMENDED".
 3. **Send Message URL**: dejá la default
-   (`https://webhook.neotel.com.ar/NeoWebhookTest/api/ExternalApplication/SendMessage`).
-   Cambiala por la de producción cuando vayas a prod (pedile la URL a Neotel).
+   (`https://s2.neotel.us/NeoWebhook/api/ExternalApplication/SendMessage`), que
+   es el host vivo de Neotel. Si tu cuenta usa otro host, pedile la URL a Neotel
+   y reemplazala. (El viejo default `webhook.neotel.com.ar/NeoWebhookTest` no
+   resuelve en DNS y hacía fallar el envío.)
 4. **Application ID**: pegá el de Neotel.
 5. **Access Token**: pegá el otro.
 6. **Active**: marcado.

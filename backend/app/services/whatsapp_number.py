@@ -2,6 +2,7 @@
 import logging
 import secrets
 from datetime import datetime, timezone
+from urllib.parse import quote
 from uuid import UUID
 
 from fastapi import HTTPException, status
@@ -28,7 +29,13 @@ def _generate_instance_name() -> str:
 
 def _webhook_callback_url(instance_name: str) -> str:
     base = settings.public_backend_url.rstrip("/")
-    return f"{base}/api/v1/webhooks/evolution/{instance_name}"
+    url = f"{base}/api/v1/webhooks/evolution/{instance_name}"
+    # When a shared secret is configured, carry it on the callback URL so
+    # Evolution echoes it back on every POST and the inbound endpoint can
+    # verify it. No secret configured -> URL unchanged (backwards compatible).
+    if settings.evolution_webhook_secret:
+        url += f"?secret={quote(settings.evolution_webhook_secret, safe='')}"
+    return url
 
 
 def _phone_from_jid(jid: str | None) -> str | None:

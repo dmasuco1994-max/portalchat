@@ -18,7 +18,7 @@ Multi-tenant WhatsApp gateway portal built on top of Evolution API.
 1. Copy environment variables and edit the secrets:
 
    ```powershell
-   Copy-Item .env.example .env
+   Copy-Item example.env .env
    ```
 
 2. Build and start all services:
@@ -99,6 +99,20 @@ For Neotel deployments on a private network where the user can deploy VMs
 internally but doesn't have shell on the Neotel server, **`external_neotel`
 is the only viable path** — the others all need filesystem or DNS
 modifications on the Neotel host.
+
+### Verified Neotel hosts (2026-06)
+
+DNS/HTTP checks against the public Neotel endpoints, so the dropdown defaults
+point at hosts that actually resolve:
+
+| Host | Status | Used by |
+|------|--------|---------|
+| `s2.neotel.us` | live (HTTP 200/405) | `apiwha_neotel` (`/NeoWebhook/api/ApiWha`), `external_neotel` (`/NeoWebhook/api/ExternalApplication/SendMessage`) |
+| `s2.neotel.cc` | live (HTTP 405) | `neotel_custom` (`/neowebhook/api/CustomAccount/Messages/{channel}`) |
+| `webhook.neotel.com.ar` | **dead — does not resolve** | old `external_neotel` default (test env); replaced |
+
+If your account uses a different host, confirm it with Neotel and override the
+URL in the number's Webhook page.
 
 ## Frontend auth model
 
@@ -189,6 +203,29 @@ docker volumes from the old host to the new VM before first start:
 5. Paste it into Neotel's `Webhook URL` field on the same account
 6. Verify: send a WhatsApp from another phone → conversation should appear in
    Neotel within ~1-2 seconds. Agent reply → arrives at the WhatsApp phone.
+
+## Running tests
+
+Unit tests cover the pure webhook adapters (apiwha / neotel_custom /
+external_neotel) and the inbound helpers — no DB or network needed:
+
+```powershell
+docker compose exec backend pytest
+```
+
+## Optional: secure the Evolution inbound webhook
+
+The `POST /api/v1/webhooks/evolution/{instance}` endpoint has no auth by
+default (it trusts the random instance name + network). To require a shared
+secret, set `EVOLUTION_WEBHOOK_SECRET` in `.env`, then re-bind each number's
+webhook so Evolution picks up the new URL:
+
+```powershell
+# per number, after setting the secret
+curl -X POST http://<host>:8000/api/v1/numbers/<id>/rebind-webhook
+```
+
+When the var is unset (default), behavior is unchanged.
 
 ## Useful commands
 

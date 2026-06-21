@@ -35,6 +35,15 @@ class Settings(BaseSettings):
     # service name is "backend".
     public_backend_url: str = "http://backend:8000"
 
+    # Optional shared secret to authenticate Evolution -> backend webhooks.
+    # When set, the per-instance callback URL carries `?secret=<value>` and the
+    # inbound endpoint rejects calls whose `secret` query param doesn't match.
+    # Leave unset (default) to keep the prior behavior (auth by random instance
+    # name + network trust) — existing deployments are unaffected. After setting
+    # it, re-bind webhooks so Evolution learns the new URL:
+    #   POST /api/v1/numbers/{id}/rebind-webhook
+    evolution_webhook_secret: str | None = None
+
     # ---- JWT -------------------------------------------------------------
     jwt_algorithm: str = "HS256"
     access_token_expire_minutes: int = 15

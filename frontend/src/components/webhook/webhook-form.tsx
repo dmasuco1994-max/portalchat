@@ -173,6 +173,7 @@ export function WebhookForm({ number }: { number: WhatsAppNumber }) {
   const isApiwha = format === "apiwha_neotel";
   const isNeotelCustom = format === "neotel_custom";
   const isExternal = format === "external_neotel";
+  const neotelTokenValue = form.watch("neotelToken");
 
   React.useEffect(() => {
     if (isApiwha && !form.getValues("url")) {
@@ -399,18 +400,30 @@ export function WebhookForm({ number }: { number: WhatsAppNumber }) {
                   name="neotelToken"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Neotel Token (optional)</FormLabel>
+                      <FormLabel>Neotel Token</FormLabel>
                       <FormControl>
                         <Input placeholder="MAf5psdL3-AP5BX…" {...field} />
                       </FormControl>
                       <FormDescription>
-                        Sent as <code>apikey</code> in the form body. Apiwha
-                        always includes this; Neotel may validate against it.
+                        Sent as <code>apikey</code>. Required to authenticate the
+                        agent&apos;s replies that Neotel POSTs to{" "}
+                        <code>/send_message.php</code> — if it&apos;s empty,
+                        sending fails with <code>Invalid apikey</code>. Use the
+                        same value as the <code>Token</code> on the Neotel side.
                       </FormDescription>
                       <FormMessage />
                     </FormItem>
                   )}
                 />
+
+                {!neotelTokenValue?.trim() && (
+                  <div className="rounded-md border border-amber-500/40 bg-amber-500/5 p-3 text-sm">
+                    <span className="text-destructive">Token is empty</span> —
+                    without it, agent replies fail with{" "}
+                    <code>Invalid apikey</code>. Paste the same Token you set on
+                    the Neotel side.
+                  </div>
+                )}
 
                 <div className="rounded-md border border-sky-500/40 bg-sky-500/5 p-3 text-sm">
                   <p className="font-medium">Match on Neotel side</p>

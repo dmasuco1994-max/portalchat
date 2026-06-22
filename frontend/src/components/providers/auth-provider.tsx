@@ -112,7 +112,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (status === "loading") return;
     const onPublic = PUBLIC_PATHS.has(pathname);
     if (status === "authenticated" && onPublic) {
-      router.replace("/");
+      // Hard navigation (not router.replace): a soft client navigation here can
+      // reuse a router-cache entry rendered while unauthenticated (which bounces
+      // back to /login), leaving the user stuck on the login screen until a
+      // manual reload. A full navigation re-runs middleware with the freshly-set
+      // refresh cookie and lands on the dashboard reliably.
+      window.location.replace("/dashboard");
     } else if (status === "unauthenticated" && !onPublic) {
       router.replace("/login");
     }
